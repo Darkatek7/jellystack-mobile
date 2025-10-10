@@ -2,16 +2,16 @@
 
 ## Tasks
 - Create public repo: `jellystack-mobile`.
-- Add APGL-3.0  license, README, CODE_OF_CONDUCT, CONTRIBUTING, issue templates.
-- Init .NET MAUI project.
-- Add solution folders: `App`, `Core`, `Apis`, `Players`, `Platform`, `Storage`, `Design`, `Tests`, `UiTests`, `tools`, `docs`.
-- Add packages: `CommunityToolkit.Mvvm`, `CommunityToolkit.Maui`, `Refit`, `Polly`, `Refit.HttpClientFactory`, `SQLite-net-pcl` or `EFCore.Sqlite`, `FluentValidation`, `Mapperly` or `AutoMapper`, optional `LibVLCSharp`, `Shiny`.
-- Add EditorConfig, analyzers, dotnet format.
+- Add APGL-3.0 license, README, CODE_OF_CONDUCT, CONTRIBUTING, issue templates.
+- Init Kotlin Multiplatform project with Gradle Kotlin DSL, Compose Multiplatform UI, and shared `expect`/`actual` structure.
+- Create modules: `:app-android`, `:app-ios`, `:shared-core`, `:shared-network`, `:shared-database`, `:players`, `:design`, `:testing`, `:tools`.
+- Add libraries: `kotlinx.coroutines`, `kotlinx.serialization`, `Ktor` (client, logging, auth), `SQLDelight`, `Koin`, `Napier`, `Voyager` or similar navigation, optional `MediaKit` for experiments.
+- Configure `spotless` with `ktlint`, Detekt, and shared compiler options.
 
 ## Checklist
-- README explains goals, build, run.
-- Build succeeds on Android and iOS.
-- Lint passes with zero warnings.
+- README explains goals plus Android and iOS build steps.
+- `./gradlew :app-android:assembleDebug` and `./gradlew :shared-core:iosArm64Test` succeed on CI runners.
+- Static analysis reports zero outstanding issues.
 
 **Exit:** First tag: `v0.0.1`.
 
@@ -20,14 +20,14 @@
 # 1. CI setup
 
 ## Tasks
-- GitHub Actions: build matrix for Android+iOS, run tests, cache NuGet.
-- Dependabot for NuGet and Actions.
-- CodeQL workflow.
+- GitHub Actions matrix with Android and iOS simulators, run `./gradlew build` and unit tests, cache Gradle and Kotlin compiler outputs.
+- Dependabot or Renovate for Gradle, Kotlin, GitHub Actions.
+- Kotlin static analysis workflow (Detekt, ktlint).
 
 ## Checklist
-- PRs run CI.
-- Status badges in README.
-- Dependabot PR auto-labels.
+- PRs trigger Gradle build, Android instrumentation smoke, and iOS simulator tests.
+- Status badges for build and lint in README.
+- Dependency bot PRs auto-label and request reviewers.
 
 **Exit:** CI green on a sample PR.
 
@@ -36,201 +36,201 @@
 # 2. App shell and theming
 
 ## Tasks
-- MAUI Shell navigation.
-- Light/Dark themes, typography, icons.
-- Base pages: Home, Libraries, Detail, Player, Downloads, Requests, Settings, Onboarding.
+- Compose Multiplatform navigation scaffold with shared screen models.
+- Light and dark palettes, typography, and icon pack from shared design tokens.
+- Base screens: Home, Libraries, Detail, Player shell, Downloads, Requests, Settings, Onboarding.
+- iOS host uses SwiftUI wrapper around Compose hierarchy.
 
 ## Checklist
-- Shell routes registered.
-- All pages render on device.
-- Theme switch works.
+- Navigation graph verified on Android emulator and iOS simulator.
+- Theme toggle updates instantly across shared screens.
+- Accessibility roles assigned for primary components.
 
-**Exit:** Screenshot set in README.
+**Exit:** Screenshot set in README from both platforms.
 
 ---
 
 # 3. DI, config, and secure storage
 
 ## Tasks
-- Microsoft.Extensions.DependencyInjection setup.
-- App settings model.
-- SecureStorage wrapper for tokens and API keys.
-- Logging with redaction.
+- Configure Koin modules for shared services with platform bootstrap for Android and iOS.
+- Define settings model persisted with `Settings` multiplatform library or custom expect/actual store.
+- Secure token vault using Android EncryptedSharedPreferences and iOS Keychain through shared abstraction.
+- Structured logging with Napier plus redaction filters.
 
 ## Checklist
-- Secrets never logged.
-- Unit tests for redaction.
+- Secrets redacted in logs on both platforms.
+- Unit tests cover secure storage abstraction and error handling.
 
-**Exit:** Manual test shows keys stored and retrieved.
+**Exit:** Manual test stores and retrieves tokens through shared API.
 
 ---
 
 # 4. API clients codegen
 
 ## Tasks
-- Collect OpenAPI/Swagger for Jellyfin, Sonarr, Radarr, Jellyseerr.
-- NSwag or Kiota script in `/tools` to generate Refit interfaces and DTOs.
-- Typed HttpClients with Polly timeouts and retry.
-- Auth handlers per service.
+- Collect OpenAPI or Swagger for Jellyfin, Sonarr, Radarr, Jellyseerr.
+- Create Kotlin script in `/tools` using `openapi-generator` or `ktorfit` to emit multiplatform DTOs and Ktor client interfaces.
+- Configure Ktor client with CIO or OkHttp engines, retry policy with `ktor-client-plugins`, and auth interceptors per service.
+- Provide Gradle task to refresh generated sources.
 
 ## Checklist
-- `dotnet tool restore && ./tools/codegen.ps1` regenerates clients.
-- Sample call per service succeeds against a test server.
+- `./gradlew :tools:generateApis` regenerates clients deterministically.
+- Sample request per service passes against local or staging servers.
 
-**Exit:** Clients versioned in repo with regen instructions.
+**Exit:** Generated sources committed with usage notes.
 
 ---
 
 # 5. Onboarding and server management
 
 ## Tasks
-- Add server: name, base URL, auth method.
-- Jellyfin login flow to get access token.
-- Sonarr/Radarr/Jellyseerr API key entry.
-- Connectivity test button and result.
-- Multi-server support.
+- Add server flow: name, base URL, auth method selection.
+- Jellyfin login sequence obtaining token via shared Ktor client.
+- Sonarr, Radarr, Jellyseerr API key entry with validation.
+- Connectivity test surfaced with Compose snackbar and SwiftUI sheet wrappers.
+- Multi-server profiles stored in shared database.
 
 ## Checklist
-- Add, edit, remove servers.
-- All tests show green connectivity or clear error.
-- Inputs validated.
+- Add, edit, remove servers on both platforms.
+- Connectivity tests show success or actionable error text.
+- Validation prevents duplicate servers and invalid URLs.
 
-**Exit:** At least one of each service saved and usable.
+**Exit:** At least one of each service saved and reusable after restart.
 
 ---
 
 # 6. Jellyfin browse MVP
 
 ## Tasks
-- Fetch libraries.
-- List views with paging and search.
-- Item detail: title, art, streams, tracks, runtime, resume state.
-- Continue Watching on Home.
+- Fetch libraries via generated client and cache in SQLDelight.
+- Compose lazy lists with paging on Android; reuse shared presenter logic for iOS.
+- Item detail screen shows metadata, media sources, track listings, resume state.
+- Continue Watching rail on Home using cached progress.
 
 ## Checklist
-- Libraries load under 1.5 s on local network.
-- Infinite scroll or paging works.
-- Detail page shows primary metadata.
+- Library fetch stays under 1.5 s on local network baseline.
+- Paging works with smooth scroll on Android and iOS.
+- Detail screen renders metadata, artwork, and actions.
 
-**Exit:** Demo: browse and open an item detail.
+**Exit:** Demo covers browsing and opening an item detail on both platforms.
 
 ---
 
 # 7. Playback engine v1
 
 ## Tasks
-- Player abstraction.
-- Platform default players: ExoPlayer (Android) and AVPlayer (iOS).
-- Play direct stream and HLS from Jellyfin.
-- Controls: play/pause, seek, next/prev, audio/subtitle picker.
-- Track progress and send updates to server.
+- Shared player facade with `expect`/`actual` bridging to ExoPlayer on Android and AVPlayer on iOS.
+- Support direct play and HLS from Jellyfin.
+- Controls: play, pause, seek, next, previous, audio and subtitle selection.
+- Progress tracking pushes updates through Ktor client on interval.
 
 ## Checklist
-- 1080p H264 plays direct.
-- Subtitles display (SRT/VTT).
-- Progress sync works on stop and on interval.
+- 1080p H264 direct play stable on both platforms.
+- Subtitle rendering handles SRT and VTT.
+- Progress resumes after closing and reopening the app.
 
-**Exit:** Watch a file for 2 minutes, relaunch, resume works.
+**Exit:** Watch for two minutes, close, reopen, resume succeeds.
 
 ---
 
 # 8. Offline downloads v1
 
 ## Tasks
-- Choose quality or original.
-- Background transfer: WorkManager (Android), NSURLSession background (iOS).
-- Download queue UI: states, cancel, retry.
-- File storage layout per user.
-- Space checks and purge rules.
+- Quality selector with bitrate presets.
+- Background transfer: WorkManager on Android, NSURLSession background tasks on iOS bridged through shared abstraction.
+- Download queue UI with status chips, cancel, retry.
+- File layout namespacing per user and server.
+- Space monitoring and purge rules in shared service.
 
 ## Checklist
-- Pause/resume works.
-- Corrupt file detection with checksum or size check.
-- Offline playback with network off.
+- Pause and resume supported on both platforms.
+- Corrupt files detected using checksum or byte count validation.
+- Offline playback succeeds with radios disabled.
 
-**Exit:** Download two items, play both offline.
+**Exit:** Download two items and play both offline.
 
 ---
 
 # 9. Library sync and caching
 
 ## Tasks
-- SQLite schema for items, users, servers, progress, downloads.
-- Fast sync: resume points and continue watching.
-- Slow sync: library deltas by updated timestamp.
-- Conflict policy: local progress wins then PATCH.
+- SQLDelight schema for items, users, servers, progress, downloads.
+- Fast sync: resume points and Continue Watching rails.
+- Slow sync: delta pulls keyed by updated timestamp.
+- Conflict handling: prefer local progress then patch upstream.
 
 ## Checklist
-- Cold start shows cached lists.
-- Sync jobs resumable on app restart.
-- DB migrations tested.
+- Cold start reads from cache instantly.
+- Sync resumes after app restart.
+- Database migrations covered by unit tests.
 
-**Exit:** Airplane mode shows cached data with badges.
+**Exit:** Airplane mode shows cached data and sync badges.
 
 ---
 
 # 10. Jellyseerr requests
 
 ## Tasks
-- Search titles from Jellyseerr.
-- Request flow for movie and series.
-- Status list: requested, approved, processing, available.
-- Permissions check for admin vs user.
+- Search titles through Jellyseerr client with pagination.
+- Request flow for movie and series using shared form logic.
+- Status list: requested, approved, processing, available, including polling cadence.
+- Permission gate for admin versus standard user roles.
 
 ## Checklist
-- Create request and see status change over time.
-- Errors surfaced when title already requested.
+- Create request and observe status transitions.
+- Duplicate request surfaces friendly error.
 
-**Exit:** End-to-end request recorded on server.
+**Exit:** End-to-end request visible on server timeline.
 
 ---
 
 # 11. Sonarr management
 
 ## Tasks
-- List series with filters.
-- Series detail: monitored, quality profile, root path, tags.
-- Add new series and season options.
-- Manual search and queue view.
+- List series with filters and fast search.
+- Series detail edits: monitored flag, quality profile, root path, tags.
+- Add new series with season monitoring presets.
+- Manual search and queue monitoring screen.
 
 ## Checklist
-- Edit quality profile and save.
-- Add a series from search.
-- View import queue.
+- Update quality profile and persist via API.
+- Add a series from search dialog.
+- View and refresh import queue state.
 
-**Exit:** Change one series to a new profile and confirm in Sonarr UI.
+**Exit:** Change one series profile and verify in Sonarr UI.
 
 ---
 
 # 12. Radarr management
 
 ## Tasks
-- List movies with filters.
-- Movie detail: monitored, profile, path, tags.
-- Add new movie.
-- Manual search and queue view.
+- List movies with filters and quick search.
+- Movie detail edits: monitored flag, quality profile, root path, tags.
+- Add new movie from Jellyseerr or direct search.
+- Manual search and queue monitoring screen.
 
 ## Checklist
-- Edit movie profile and save.
-- Add a movie from search.
-- View download queue.
+- Update movie profile and persist via API.
+- Add a movie from search dialog.
+- View and refresh download queue state.
 
-**Exit:** Change one movie to a new profile and confirm in Radarr UI.
+**Exit:** Change one movie profile and confirm in Radarr UI.
 
 ---
 
 # 13. Security hardening
 
 ## Tasks
-- Enforce HTTPS by default. Warn on HTTP.
-- Optional certificate pinning toggle.
-- Biometric lock for the app.
-- Sensitive logs redacted.
+- Enforce HTTPS default with warning on HTTP.
+- Optional certificate pinning toggle using Ktor features on both engines.
+- Biometric lock using Android BiometricPrompt and iOS LocalAuthentication bridged to shared auth gate.
+- Sensitive logs redacted before emission.
 
 ## Checklist
-- HTTP add flow shows warning with require-confirm.
-- Pinning blocks altered cert in test.
-- Biometric lock gates entry.
+- HTTP add flow warns and requires confirm.
+- Pinning blocks altered certificate in tests.
+- Biometric lock guards entry on both targets.
 
 **Exit:** Threat notes in `/docs/security.md`.
 
@@ -239,15 +239,15 @@
 # 14. Error states and UX polish
 
 ## Tasks
-- Empty states, skeleton loaders, retry actions.
-- Global toast/snackbar for common errors.
-- Accessibility labels and larger text support.
-- Tablet layouts.
+- Empty states, skeleton loaders, retry affordances.
+- Global snackbar or toast messaging wired through shared state.
+- Accessibility labels and dynamic type scaling.
+- Tablet and desktop Compose layout variants.
 
 ## Checklist
-- All list screens have placeholder states.
-- VoiceOver/TalkBack reads controls.
-- Landscape tablet layout verified.
+- Lists show placeholders before data loads.
+- VoiceOver and TalkBack announce key controls.
+- Landscape tablet layout reviewed.
 
 **Exit:** UX review doc with screenshots.
 
@@ -256,58 +256,58 @@
 # 15. Telemetry and diagnostics (opt-in)
 
 ## Tasks
-- Sentry or App Center with user consent.
-- In-app diagnostic bundle export with redaction.
-- Toggle in Settings.
+- Hook Sentry, Firebase Crashlytics, or Kermit remote logging with user consent gate.
+- In-app diagnostic bundle export with redaction of secrets.
+- Toggle in Settings stored in shared preferences abstraction.
 
 ## Checklist
-- Crash captured in test.
-- Export produces a zip without secrets.
+- Crash event captured in test build.
+- Exported bundle omits sensitive data.
 
-**Exit:** Telemetry disabled by default, works when enabled.
+**Exit:** Telemetry off by default, user can opt in.
 
 ---
 
 # 16. Localization and formatting
 
 ## Tasks
-- Resource files for strings.
-- Date, time, and number formatting.
+- Shared string resources with moko-resources or custom expect/actual loader.
+- Date, time, number formatting through kotlinx-datetime and platform formatters.
 - German and English packs to start.
 
 ## Checklist
-- Language switch at runtime.
-- No hardcoded strings in UI.
+- Language switch at runtime across both targets.
+- No hardcoded strings in Compose or SwiftUI host layers.
 
-**Exit:** Two languages shippable.
+**Exit:** Two languages ready for release.
 
 ---
 
 # 17. Casting (optional)
 
 ## Tasks
-- Google Cast on Android.
-- AirPlay on iOS.
-- Session controls and route picker.
+- Google Cast on Android with shared command channel.
+- AirPlay on iOS using AVRoutePicker and now playing info bridge.
+- Session controls and route picker UI.
 
 ## Checklist
-- Cast HLS to a target device.
-- Transport controls map to receiver.
+- Cast HLS stream to target device.
+- Transport controls map to receiver commands.
 
-**Exit:** One test device confirmed.
+**Exit:** One cast target validated end to end.
 
 ---
 
 # 18. Advanced playback (optional)
 
 ## Tasks
-- LibVLCSharp integration path.
-- Picture-in-Picture on both platforms.
-- Background audio for music.
+- MediaKit or VLC-based fallback engine experiment.
+- Picture-in-Picture on Android and iOS.
+- Background audio service for music playback.
 
 ## Checklist
-- PiP works on Android and iOS.
-- Switch engine flag between native and VLC.
+- PiP works on Android and iOS builds.
+- Engine selection toggle switches between native and alternate player.
 
 **Exit:** Playback parity maintained.
 
@@ -316,32 +316,32 @@
 # 19. Release engineering
 
 ## Tasks
-- App icons, splash, versioning.
-- Fastlane or MAUI publish tasks.
-- Google Play Internal Testing track.
-- TestFlight build.
-- Privacy policy and data safety forms.
+- App icons, splash, semantic versioning.
+- Fastlane lanes for Android and iOS builds, Gradle tasks for bundles.
+- Google Play internal testing track.
+- TestFlight distribution via `fastlane pilot`.
+- Privacy policy and data safety forms updated for Kotlin Multiplatform stack.
 
 ## Checklist
-- Signed builds produced from CI.
-- Store listings drafted.
-- Testers can install.
+- Signed builds produced from CI workflows.
+- Store listings drafted and linked to artifacts.
+- Testers can install on both stores.
 
-**Exit:** `v0.1` to test tracks.
+**Exit:** `v0.1` distributed to test tracks.
 
 ---
 
 # 20. Testing
 
 ## Tasks
-- Unit tests for repositories, auth handlers, and mappers.
-- API wrappers tested with WireMock.Net.
-- Snapshot tests for viewmodels.
-- Device tests for player and downloads.
+- Unit tests for repositories, auth handlers, mappers using Kotlin test frameworks.
+- API wrappers tested with Ktor mock engine and MockServer.
+- Snapshot tests for screen models via Compose testing APIs.
+- Device tests for player and downloads on Android instrumentation and iOS UITests.
 
 ## Checklist
-- Coverage target set and met.
-- Emulator and physical device runs logged.
+- Coverage target defined and met via Kover.
+- Emulator and physical device runs documented.
 
 **Exit:** CI gate enforces tests on PRs.
 
@@ -352,11 +352,11 @@
 ## Tasks
 - `/docs/setup.md` for servers and keys.
 - `/docs/apis.md` for endpoints used.
-- `/docs/architecture.md` diagram.
-- `/docs/contrib.md` flow and code style.
+- `/docs/architecture.md` diagram showing Kotlin Multiplatform layers.
+- `/docs/contrib.md` flow, code style, tooling commands.
 
 ## Checklist
-- New dev can build in under 15 minutes.
-- Architecture diagram in repo.
+- New contributor can build in under 15 minutes.
+- Architecture diagram committed.
 
 **Exit:** Docs linked from README.
