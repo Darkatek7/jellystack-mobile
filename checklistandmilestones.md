@@ -26,14 +26,18 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 
 ## Sonarr
 - [ ] List and filter series  
-- [ ] Add new series  
+- [ ] Add new series
+- [ ] Delete series
+- [ ] Remove Episode files
 - [ ] Edit monitored, profile, path, tags  
 - [ ] Manual search and queue  
 - [ ] Refresh and rescan triggers  
 
 ## Radarr
 - [ ] List and filter movies  
-- [ ] Add new movie  
+- [ ] Add new movie
+- [ ] Remove Movie files
+- [ ] Delete movies  
 - [ ] Edit monitored, profile, path, tags  
 - [ ] Manual search and queue  
 - [ ] Refresh and rename triggers  
