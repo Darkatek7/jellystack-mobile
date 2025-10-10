@@ -1,5 +1,7 @@
 # Feature Checklists
 
+All items assume the Kotlin Multiplatform stack with shared Compose UI and native service bridges.
+
 ## Jellyfin Browse and Play
 - [ ] View libraries and filter  
 - [ ] Search by name  
