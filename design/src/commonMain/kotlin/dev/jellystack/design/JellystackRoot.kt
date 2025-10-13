@@ -10,24 +10,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import dev.jellystack.core.currentPlatform
-import dev.jellystack.players.PlaybackController
 import dev.jellystack.design.theme.JellystackTheme
+import dev.jellystack.players.PlaybackController
 
+@Suppress("FunctionName", "ktlint:standard:function-naming")
 @Composable
 fun JellystackRoot(
     isDarkTheme: Boolean,
-    controller: PlaybackController = PlaybackController()
+    controller: PlaybackController = PlaybackController(),
 ) {
     JellystackTheme(isDarkTheme = isDarkTheme) {
         Surface {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.Center,
             ) {
                 Text(
                     text = "Jellystack bootstrap running on ${currentPlatform().name}",
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
                 )
                 Text(text = "Playback state: ${controller.state.value}")
             }

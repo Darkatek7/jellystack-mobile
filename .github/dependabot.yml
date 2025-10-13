@@ -5,8 +5,7 @@ updates:
     schedule:
       interval: "weekly"
     labels:
-      - "type:feature"
-      - "dependencies"
+      - "type:dependencies"
     reviewers:
       - "2108"
     open-pull-requests-limit: 5
@@ -16,8 +15,7 @@ updates:
     schedule:
       interval: "weekly"
     labels:
-      - "type:feature"
-      - "dependencies"
+      - "type:dependencies"
     reviewers:
       - "2108"
     open-pull-requests-limit: 5

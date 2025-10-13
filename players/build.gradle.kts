@@ -1,10 +1,18 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.android.library)
+    id("org.jetbrains.kotlin.multiplatform")
+    id("com.android.library")
 }
 
 kotlin {
-    androidTarget()
+    jvmToolchain(17)
+
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
     iosX64()
     iosArm64()
     iosSimulatorArm64()
@@ -14,6 +22,7 @@ kotlin {
             dependencies {
                 implementation(projects.sharedCore)
                 implementation(projects.sharedNetwork)
+                implementation(libs.coroutines.core)
             }
         }
         val commonTest by getting {
@@ -27,4 +36,9 @@ kotlin {
 android {
     namespace = "dev.jellystack.players"
     compileSdk = 35
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 }

@@ -1,11 +1,19 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    id("org.jetbrains.kotlin.multiplatform")
     alias(libs.plugins.sqldelight)
-    alias(libs.plugins.android.library)
+    id("com.android.library")
 }
 
 kotlin {
-    androidTarget()
+    jvmToolchain(17)
+
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
     iosX64()
     iosArm64()
     iosSimulatorArm64()
@@ -29,17 +37,23 @@ kotlin {
                 implementation(libs.sqldelight.android)
             }
         }
-        val iosMain by getting {
-            dependencies {
-                implementation(libs.sqldelight.native)
+        val iosMain =
+            maybeCreate("iosMain").apply {
+                dependencies {
+                    implementation(libs.sqldelight.native)
+                }
             }
-        }
     }
 }
 
 android {
     namespace = "dev.jellystack.database"
     compileSdk = 35
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 }
 
 sqldelight {

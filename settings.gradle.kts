@@ -6,7 +6,7 @@ pluginManagement {
         maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     }
     val kotlinVersion = "2.0.21"
-    val agpVersion = "8.6.1"
+    val agpVersion = "8.5.2"
     val composeVersion = "1.7.0"
     val sqldelightVersion = "2.0.2"
     val detektVersion = "1.23.7"
@@ -46,7 +46,7 @@ iInclude(
     ":players",
     ":design",
     ":testing",
-    ":tools"
+    ":tools",
 )
 
 fun iInclude(vararg paths: String) {

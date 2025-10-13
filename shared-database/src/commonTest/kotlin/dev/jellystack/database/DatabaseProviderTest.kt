@@ -11,8 +11,9 @@ private class FakeDriverFactory : DriverFactory() {
 
 class DatabaseProviderTest {
     @Test
-    fun dispatcherDefaults() = runTest {
-        val provider = DatabaseProvider(FakeDriverFactory())
-        assertEquals(expected = kotlinx.coroutines.Dispatchers.Default, actual = provider.dispatcher)
-    }
+    fun dispatcherDefaults() =
+        runTest {
+            val provider = DatabaseProvider(FakeDriverFactory())
+            assertEquals(expected = kotlinx.coroutines.Dispatchers.Default, actual = provider.dispatcher)
+        }
 }

@@ -7,6 +7,7 @@ expect class Platform() {
     val name: String
 }
 
-fun currentPlatform(): Platform = Platform().also {
-    Napier.d(message = "Bootstrapped core on ${it.name} at ${Clock.System.now()}")
-}
+fun currentPlatform(): Platform =
+    Platform().also {
+        Napier.d(message = "Bootstrapped core on ${it.name} at ${Clock.System.now()}")
+    }

@@ -8,7 +8,10 @@ expect open class DriverFactory constructor() {
     open suspend fun createDriver(): SqlDriver
 }
 
-class DatabaseProvider(private val driverFactory: DriverFactory) {
+class DatabaseProvider(
+    private val driverFactory: DriverFactory,
+) {
     val dispatcher: CoroutineDispatcher = Dispatchers.Default
+
     suspend fun database() = JellystackDatabase(driverFactory.createDriver())
 }

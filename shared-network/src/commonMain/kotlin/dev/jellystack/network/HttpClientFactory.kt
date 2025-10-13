@@ -16,7 +16,12 @@ fun buildHttpClient(configure: HttpClientConfig<*>.() -> Unit = {}): HttpClient 
     val platform = currentPlatform()
     return HttpClient(platformEngine()) {
         install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true; isLenient = true })
+            json(
+                Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                },
+            )
         }
         install(Logging) {
             level = LogLevel.HEADERS
