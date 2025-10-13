@@ -9,6 +9,12 @@ plugins {
 kotlin {
     jvmToolchain(17)
 
+    jvm {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
@@ -21,7 +27,6 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation(projects.sharedCore)
                 implementation(libs.coroutines.core)
                 implementation(libs.serialization.json)
                 implementation(libs.ktor.client.core)
@@ -35,6 +40,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.ktor.client.mock)
+                implementation(libs.coroutines.test)
             }
         }
         val androidMain by getting {
@@ -48,6 +54,11 @@ kotlin {
                     implementation(libs.ktor.client.darwin)
                 }
             }
+        val jvmMain by getting {
+            dependencies {
+                implementation(libs.ktor.client.okhttp)
+            }
+        }
     }
 }
 

@@ -1,13 +1,48 @@
-CREATE TABLE Servers (
+CREATE TABLE servers (
     id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
     name TEXT NOT NULL,
-    baseUrl TEXT NOT NULL,
-    type TEXT NOT NULL
+    base_url TEXT NOT NULL,
+    username TEXT,
+    device_id TEXT,
+    api_key TEXT,
+    access_token TEXT,
+    user_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
 );
 
-listServers:
-SELECT * FROM Servers;
+selectAll:
+SELECT *
+FROM servers
+ORDER BY name;
 
-insertServer:
-INSERT OR REPLACE INTO Servers(id, name, baseUrl, type)
-VALUES (?, ?, ?, ?);
+selectById:
+SELECT *
+FROM servers
+WHERE id = ?;
+
+selectByTypeAndUrl:
+SELECT *
+FROM servers
+WHERE type = ? AND base_url = ?;
+
+insertOrReplace:
+INSERT OR REPLACE INTO servers (
+    id,
+    type,
+    name,
+    base_url,
+    username,
+    device_id,
+    api_key,
+    access_token,
+    user_id,
+    created_at,
+    updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteById:
+DELETE FROM servers
+WHERE id = ?;

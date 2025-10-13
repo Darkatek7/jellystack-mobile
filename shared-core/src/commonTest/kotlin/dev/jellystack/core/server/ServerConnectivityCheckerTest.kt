@@ -1,0 +1,113 @@
+package dev.jellystack.core.server
+
+import dev.jellystack.network.NetworkClientFactory
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.respondError
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class ServerConnectivityCheckerTest {
+    @Test
+    fun jellyfinSuccessReturnsToken() = runTest {
+        val engine =
+            MockEngine { request ->
+                assertTrue(request.url.encodedPath.endsWith("/Users/AuthenticateByName"))
+                respond(
+                    content =
+                        """{"AccessToken":"token123","User":{"Id":"user42","Name":"Demo"},"ServerId":"srv"}""",
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
+            }
+        val checker = checkerWithEngine(engine)
+
+        val result =
+            checker.test(
+                ServerRegistration(
+                    type = ServerType.JELLYFIN,
+                    name = "Home Jellyfin",
+                    baseUrl = "https://media.local",
+                    credentials = CredentialInput.Jellyfin(username = "demo", password = "secret"),
+                ),
+            )
+
+        val success = assertIs<ConnectivityResult.Success>(result)
+        val credential = assertIs<StoredCredential.Jellyfin>(success.credentials)
+        assertTrue(credential.accessToken.isNotBlank())
+    }
+
+    @Test
+    fun jellyfinFailureProducesFailure() = runTest {
+        val checker = checkerWithEngine(MockEngine { respondError(HttpStatusCode.Unauthorized) })
+
+        val result =
+            checker.test(
+                ServerRegistration(
+                    type = ServerType.JELLYFIN,
+                    name = "Media",
+                    baseUrl = "https://media.local",
+                    credentials = CredentialInput.Jellyfin(username = "demo", password = "bad"),
+                ),
+            )
+
+        assertIs<ConnectivityResult.Failure>(result)
+    }
+
+    @Test
+    fun sonarrSuccessUsesApiKey() = runTest {
+        val engine =
+            MockEngine { request ->
+                assertTrue(request.headers["X-Api-Key"] == "abc")
+                respond(
+                    content = """{"appName":"Sonarr","version":"3.0.0"}""",
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
+            }
+        val checker = checkerWithEngine(engine)
+
+        val result =
+            checker.test(
+                ServerRegistration(
+                    type = ServerType.SONARR,
+                    name = "Shows",
+                    baseUrl = "https://sonarr.local",
+                    credentials = CredentialInput.ApiKey("abc"),
+                ),
+            )
+
+        assertIs<StoredCredential.ApiKey>((result as ConnectivityResult.Success).credentials)
+    }
+
+    @Test
+    fun jellyseerrFailurePropagates() = runTest {
+        val checker = checkerWithEngine(MockEngine { respondError(HttpStatusCode.InternalServerError) })
+
+        val result =
+            checker.test(
+                ServerRegistration(
+                    type = ServerType.JELLYSEERR,
+                    name = "Requests",
+                    baseUrl = "https://requests.local",
+                    credentials = CredentialInput.ApiKey("key"),
+                ),
+            )
+
+        assertIs<ConnectivityResult.Failure>(result)
+    }
+
+    private fun checkerWithEngine(engine: MockEngine): ServerConnectivityChecker =
+        ServerConnectivityChecker(
+            clientFactory = { config ->
+                NetworkClientFactory.create(
+                    config.copy(engine = engine, installLogging = false),
+                )
+            },
+            idGenerator = { "device-123" },
+        )
+}

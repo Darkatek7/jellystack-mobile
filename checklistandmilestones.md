@@ -70,13 +70,13 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [x] Unit tests cover secure storage abstraction and error handling.
 
 ### 4. API clients codegen
-- [ ] `./gradlew :tools:generateApis` regenerates clients deterministically.
-- [ ] Sample request per service passes against local or staging servers.
+- [x] `./gradlew :tools:generateApis` regenerates clients deterministically.
+- [x] Sample request per service passes against local or staging servers.
 
 ### 5. Onboarding and server management
-- [ ] Add, edit, remove servers on both platforms.
-- [ ] Connectivity tests show success or actionable error text.
-- [ ] Validation prevents duplicate servers and invalid URLs.
+- [x] Add, edit, remove servers on both platforms.
+- [x] Connectivity tests show success or actionable error text.
+- [x] Validation prevents duplicate servers and invalid URLs.
 
 ### 6. Jellyfin browse MVP
 - [ ] Library fetch stays under 1.5 s on local network baseline.
