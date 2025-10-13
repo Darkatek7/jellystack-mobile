@@ -35,7 +35,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Build
         run: ./gradlew ${{ matrix.gradle_task }} --stacktrace
@@ -61,7 +61,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Run instrumentation tests
         uses: reactivecircus/android-emulator-runner@v2

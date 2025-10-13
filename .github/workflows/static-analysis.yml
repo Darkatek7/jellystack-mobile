@@ -22,7 +22,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Spotless and Detekt
         run: ./gradlew spotlessCheck detekt --stacktrace
