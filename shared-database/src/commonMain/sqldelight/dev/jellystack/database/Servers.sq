@@ -1,0 +1,13 @@
+CREATE TABLE Servers (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    baseUrl TEXT NOT NULL,
+    type TEXT NOT NULL
+);
+
+listServers:
+SELECT * FROM Servers;
+
+insertServer:
+INSERT OR REPLACE INTO Servers(id, name, baseUrl, type)
+VALUES (?, ?, ?, ?);

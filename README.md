@@ -1,3 +1,59 @@
-## License
-This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).  
-See the [LICENSE](./LICENSE) file for details.
+# Jellystack Mobile
+
+Jellystack Mobile is a Kotlin Multiplatform application that targets Android and iOS. It uses Compose Multiplatform for UI, shared expect/actual implementations for platform logic, and modular Gradle configuration to enable focused workstreams across networking, database, playback, and tooling.
+
+## Project layout
+
+- `app-android`: Android host application using Compose.
+- `app-ios`: Kotlin/Native framework exposing the shared Compose hierarchy to SwiftUI.
+- `shared-core`: Core utilities, platform detection, and foundation services.
+- `shared-network`: Ktor client factory and networking helpers.
+- `shared-database`: SQLDelight database schema and driver abstractions.
+- `players`: Playback state management.
+- `design`: Theming, root Compose tree, and shared visual components.
+- `testing`: Shared testing utilities for multiplatform modules.
+- `tools`: JVM utilities and future API generation scripts.
+
+## Build prerequisites
+
+- JDK 21+
+- Android SDK with API level 35 platform tools
+- Xcode 15+ for iOS builds
+
+Gradle Wrapper is committed, so no manual installation is required beyond a working Java runtime.
+
+## Building
+
+```bash
+./gradlew build
+```
+
+### Android
+
+Assemble a debug build:
+
+```bash
+./gradlew :app-android:assembleDebug
+```
+
+### iOS
+
+Produce the iOS framework for arm64 devices:
+
+```bash
+./gradlew :app-ios:linkReleaseFrameworkIosArm64
+```
+
+The generated framework can be consumed from `app-ios/build/bin/iosArm64/releaseFramework/App.framework`.
+
+## Static analysis
+
+Run the configured format and lint checks:
+
+```bash
+./gradlew spotlessCheck detekt
+```
+
+## Next steps
+
+Refer to `workpackages.md` and `checklistandmilestones.md` for roadmap guidance, including CI enablement, navigation scaffolding, DI wiring, and feature implementation.
