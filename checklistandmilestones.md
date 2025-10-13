@@ -48,6 +48,109 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [ ] Theme, language, telemetry, security  
 - [ ] Export diagnostics  
 
+## Work Package Checklists
+
+### 0. Repo bootstrap
+- [ ] README explains goals plus Android and iOS build steps.
+- [ ] `./gradlew :app-android:assembleDebug` and `./gradlew :shared-core:iosArm64Test` succeed on CI runners.
+- [ ] Static analysis reports zero outstanding issues.
+
+### 1. CI setup
+- [ ] PRs trigger Gradle build, Android instrumentation smoke, and iOS simulator tests.
+- [ ] Status badges for build and lint in README.
+- [ ] Dependency bot PRs auto-label and request reviewers.
+
+### 2. App shell and theming
+- [ ] Navigation graph verified on Android emulator and iOS simulator.
+- [ ] Theme toggle updates instantly across shared screens.
+- [ ] Accessibility roles assigned for primary components.
+
+### 3. DI, config, and secure storage
+- [ ] Secrets redacted in logs on both platforms.
+- [ ] Unit tests cover secure storage abstraction and error handling.
+
+### 4. API clients codegen
+- [ ] `./gradlew :tools:generateApis` regenerates clients deterministically.
+- [ ] Sample request per service passes against local or staging servers.
+
+### 5. Onboarding and server management
+- [ ] Add, edit, remove servers on both platforms.
+- [ ] Connectivity tests show success or actionable error text.
+- [ ] Validation prevents duplicate servers and invalid URLs.
+
+### 6. Jellyfin browse MVP
+- [ ] Library fetch stays under 1.5 s on local network baseline.
+- [ ] Paging works with smooth scroll on Android and iOS.
+- [ ] Detail screen renders metadata, artwork, and actions.
+
+### 7. Playback engine v1
+- [ ] 1080p H264 direct play stable on both platforms.
+- [ ] Subtitle rendering handles SRT and VTT.
+- [ ] Progress resumes after closing and reopening the app.
+
+### 8. Offline downloads v1
+- [ ] Pause and resume supported on both platforms.
+- [ ] Corrupt files detected using checksum or byte count validation.
+- [ ] Offline playback succeeds with radios disabled.
+
+### 9. Library sync and caching
+- [ ] Cold start reads from cache instantly.
+- [ ] Sync resumes after app restart.
+- [ ] Database migrations covered by unit tests.
+
+### 10. Jellyseerr requests
+- [ ] Create request and observe status transitions.
+- [ ] Duplicate request surfaces friendly error.
+
+### 11. Sonarr management
+- [ ] Update quality profile and persist via API.
+- [ ] Add a series from search dialog.
+- [ ] View and refresh import queue state.
+
+### 12. Radarr management
+- [ ] Update movie profile and persist via API.
+- [ ] Add a movie from search dialog.
+- [ ] View and refresh download queue state.
+
+### 13. Security hardening
+- [ ] HTTP add flow warns and requires confirm.
+- [ ] Pinning blocks altered certificate in tests.
+- [ ] Biometric lock guards entry on both targets.
+
+### 14. Error states and UX polish
+- [ ] Lists show placeholders before data loads.
+- [ ] VoiceOver and TalkBack announce key controls.
+- [ ] Landscape tablet layout reviewed.
+
+### 15. Telemetry and diagnostics (opt-in)
+- [ ] Crash event captured in test build.
+- [ ] Exported bundle omits sensitive data.
+
+### 16. Localization and formatting
+- [ ] Language switch at runtime across both targets.
+- [ ] No hardcoded strings in Compose or SwiftUI host layers.
+
+### 17. Casting (optional)
+- [ ] Cast HLS stream to target device.
+- [ ] Transport controls map to receiver commands.
+
+### 18. Advanced playback (optional)
+- [ ] PiP works on Android and iOS builds.
+- [ ] Engine selection toggle switches between native and alternate player.
+
+### 19. Release engineering
+- [ ] Signed builds produced from CI workflows.
+- [ ] Store listings drafted and linked to artifacts.
+- [ ] Testers can install on both stores.
+
+### 20. Testing
+- [ ] Coverage target defined and met via Kover.
+- [ ] Emulator and physical device runs documented.
+
+### 21. Docs
+- [ ] New contributor can build in under 15 minutes.
+- [ ] Architecture diagram committed.
+
 ---
 
 # Labels and Milestones
@@ -61,6 +164,7 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - `area:player`
 - `type:bug`
 - `type:feature`
+- `type:dependencies`
 - `good first issue`
 
 ## Milestones
@@ -70,4 +174,5 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 | **v0.2 Playback + Downloads** | Player, offline | Packages 7–9 |
 | **v0.3 Requests** | Jellyseerr | Package 10 |
 | **v0.4 Sonarr/Radarr** | Management | Packages 11–12 |
+| **v0.x Casting Experiments** | Optional playback enhancements | Packages 17–18 (optional) |
 | **v1.0 Polish + Release** | Finalization | Packages 13–16, 19–21 |
