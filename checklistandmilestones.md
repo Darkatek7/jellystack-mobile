@@ -51,23 +51,23 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 ## Work Package Checklists
 
 ### 0. Repo bootstrap
-- [ ] README explains goals plus Android and iOS build steps.
+- [x] README explains goals plus Android and iOS build steps.
 - [ ] `./gradlew :app-android:assembleDebug` and `./gradlew :shared-core:iosArm64Test` succeed on CI runners.
-- [ ] Static analysis reports zero outstanding issues.
+- [x] Static analysis reports zero outstanding issues.
 
 ### 1. CI setup
-- [ ] PRs trigger Gradle build, Android instrumentation smoke, and iOS simulator tests.
-- [ ] Status badges for build and lint in README.
-- [ ] Dependency bot PRs auto-label and request reviewers.
+- [x] PRs trigger Gradle build, Android instrumentation smoke, and iOS simulator tests.
+- [x] Status badges for build and lint in README.
+- [x] Dependency bot PRs auto-label and request reviewers.
 
 ### 2. App shell and theming
 - [ ] Navigation graph verified on Android emulator and iOS simulator.
-- [ ] Theme toggle updates instantly across shared screens.
-- [ ] Accessibility roles assigned for primary components.
+- [x] Theme toggle updates instantly across shared screens.
+- [x] Accessibility roles assigned for primary components.
 
 ### 3. DI, config, and secure storage
-- [ ] Secrets redacted in logs on both platforms.
-- [ ] Unit tests cover secure storage abstraction and error handling.
+- [x] Secrets redacted in logs on both platforms.
+- [x] Unit tests cover secure storage abstraction and error handling.
 
 ### 4. API clients codegen
 - [ ] `./gradlew :tools:generateApis` regenerates clients deterministically.
