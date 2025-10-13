@@ -9,9 +9,7 @@ import dev.jellystack.core.security.SecureStoreLogger
 import dev.jellystack.core.security.SecureStoreNapierLogger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import org.koin.core.KoinApplication
 import org.koin.core.context.GlobalContext
-import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -37,17 +35,7 @@ expect fun platformModule(): Module
 fun sharedModules(): List<Module> = listOf(coreModule(), platformModule())
 
 object JellystackDI {
-    private var started = false
-
-    fun start(appDeclaration: KoinApplication.() -> Unit = {}) {
-        if (!started) {
-            startKoin {
-                appDeclaration(this)
-                modules(sharedModules())
-            }
-            started = true
-        }
-    }
-
-    fun isStarted(): Boolean = started && GlobalContext.getOrNull() != null
+    val modules: List<Module> get() = sharedModules()
+    val koin by lazy { GlobalContext.get() }
+    fun isStarted(): Boolean = GlobalContext.getOrNull() != null
 }

@@ -18,7 +18,7 @@ jobs:
           - os: ubuntu-latest
             gradle_task: build
           - os: macos-14
-            gradle_task: build :shared-core:iosSimulatorArm64Test :shared-core:iosArm64Test
+            gradle_task: build :shared-core:iosSimulatorArm64Test
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout

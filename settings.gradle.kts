@@ -3,7 +3,11 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev") {
+            content {
+                includeGroup("org.jetbrains.compose")
+            }
+        }
     }
     val kotlinVersion = "2.0.21"
     val agpVersion = "8.5.2"
@@ -29,7 +33,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev") {
+            content {
+                includeGroup("org.jetbrains.compose")
+            }
+        }
     }
 }
 

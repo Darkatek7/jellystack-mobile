@@ -5,13 +5,16 @@ import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.design.JellystackRoot
 import io.github.aakira.napier.DebugAntilog
 import io.github.aakira.napier.Napier
+import org.koin.core.context.startKoin
 
 @Suppress("FunctionName", "ktlint:standard:function-naming")
 @Composable
 fun ComposeEntry() {
     configureLogging()
     if (!JellystackDI.isStarted()) {
-        JellystackDI.start()
+        startKoin {
+            modules(JellystackDI.modules)
+        }
     }
     JellystackRoot()
 }

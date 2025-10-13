@@ -23,7 +23,6 @@ kotlin {
             dependencies {
                 implementation(libs.coroutines.core)
                 implementation(libs.serialization.json)
-                implementation(libs.koin.core)
                 implementation(libs.napier)
                 implementation(libs.kotlinx.datetime)
                 implementation(projects.sharedNetwork)
@@ -32,6 +31,8 @@ kotlin {
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
                 implementation(libs.ktor.http)
+                implementation(platform("io.insert-koin:koin-bom:3.5.6"))
+                implementation("io.insert-koin:koin-core")
             }
         }
         val commonTest by getting {
@@ -44,9 +45,9 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation(libs.coroutines.android)
-                implementation(libs.koin.core)
                 implementation(libs.androidx.security.crypto)
-                implementation(libs.koin.android)
+                implementation("io.insert-koin:koin-android")
+                implementation("io.insert-koin:koin-androidx-compose")
             }
         }
     }

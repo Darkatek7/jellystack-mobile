@@ -1,6 +1,5 @@
 package dev.jellystack.core.security
 
-@JvmInline
 value class SecretValue internal constructor(
     private val raw: String,
 ) {
