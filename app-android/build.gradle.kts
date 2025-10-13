@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.koin.compose)
     implementation(libs.napier)
+    implementation(libs.koin.android)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso)
     androidTestImplementation(libs.compose.ui.test.junit4)

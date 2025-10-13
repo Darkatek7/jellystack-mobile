@@ -38,6 +38,8 @@ kotlin {
             dependencies {
                 implementation(libs.coroutines.android)
                 implementation(libs.koin.core)
+                implementation(libs.androidx.security.crypto)
+                implementation(libs.koin.android)
             }
         }
     }
