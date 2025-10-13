@@ -6,5 +6,5 @@ import dev.jellystack.design.JellystackRoot
 @Suppress("FunctionName", "ktlint:standard:function-naming")
 @Composable
 fun ComposeEntry() {
-    JellystackRoot(isDarkTheme = false)
+    JellystackRoot()
 }

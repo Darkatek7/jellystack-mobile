@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
@@ -35,9 +36,11 @@ fun JellystackTheme(
     content: @Composable () -> Unit,
 ) {
     val colors = if (isDarkTheme) darkColors else lightColors
-    MaterialTheme(
-        colorScheme = colors,
-        typography = MaterialTheme.typography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalIsDarkTheme provides isDarkTheme) {
+        MaterialTheme(
+            colorScheme = colors,
+            typography = MaterialTheme.typography,
+            content = content,
+        )
+    }
 }
