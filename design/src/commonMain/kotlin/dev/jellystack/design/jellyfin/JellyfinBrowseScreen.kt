@@ -38,11 +38,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -94,6 +92,42 @@ fun JellyfinBrowseScreen(
         remember(state.libraryItems, isTvLibrary) {
             if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
         }
+    val nextUpItems =
+        remember(state.continueWatching, state.libraryItems) {
+            val continueEpisodes = state.continueWatching.filter { it.type.equals("Episode", ignoreCase = true) }
+            val upcomingEpisodes =
+                state.libraryItems
+                    .filter { it.type.equals("Episode", ignoreCase = true) }
+                    .filter { (it.playedPercentage ?: 0.0) < 90.0 }
+            (continueEpisodes + upcomingEpisodes)
+                .distinctBy { it.id }
+                .take(12)
+        }
+    val recentShowGroups =
+        remember(seriesGroups, state.libraryItems) {
+            if (state.libraryItems.any { it.type.equals("Series", ignoreCase = true) }) {
+                state.libraryItems
+                    .asSequence()
+                    .filter { it.type.equals("Series", ignoreCase = true) }
+                    .map { item ->
+                        MutableTvSeriesGroup(key = "series:${item.id}", series = item).toImmutable()
+                    }.take(12)
+                    .toList()
+            } else {
+                seriesGroups.take(12)
+            }
+        }
+    val recentMovieItems =
+        remember(state.libraryItems) {
+            state.libraryItems
+                .asSequence()
+                .filter { item ->
+                    item.type.equals("Movie", ignoreCase = true) ||
+                        item.mediaType.equals("Video", ignoreCase = true)
+                }.distinctBy { it.id }
+                .take(12)
+                .toList()
+        }
     LoadMoreListener(
         listState = listState,
         shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
@@ -107,12 +141,21 @@ fun JellyfinBrowseScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            item(key = "libraries") {
-                LibrarySelector(
-                    libraries = state.libraries,
-                    selectedLibraryId = state.selectedLibraryId,
-                    onSelectLibrary = onSelectLibrary,
+            item(key = "status") {
+                StatusBanner(
+                    state = state,
+                    onRetry = onRefresh,
+                    onConnect = onConnectServer,
                 )
+            }
+            if (state.libraries.isNotEmpty()) {
+                item(key = "libraries") {
+                    LibrarySelector(
+                        libraries = state.libraries,
+                        selectedLibraryId = state.selectedLibraryId,
+                        onSelectLibrary = onSelectLibrary,
+                    )
+                }
             }
             if (state.continueWatching.isNotEmpty()) {
                 item(key = "continueWatching") {
@@ -124,14 +167,41 @@ fun JellyfinBrowseScreen(
                     )
                 }
             }
-            item(key = "status") {
-                StatusBanner(
-                    state = state,
-                    onRetry = onRefresh,
-                    onConnect = onConnectServer,
+            if (nextUpItems.isNotEmpty()) {
+                item(key = "nextUp") {
+                    NextUpSection(
+                        items = nextUpItems,
+                        baseUrl = state.imageBaseUrl,
+                        accessToken = state.imageAccessToken,
+                        onOpenItem = onOpenDetail,
+                    )
+                }
+            }
+            item(key = "recentShows") {
+                RecentlyAddedShowsSection(
+                    groups = recentShowGroups,
+                    baseUrl = state.imageBaseUrl,
+                    accessToken = state.imageAccessToken,
+                    onOpenItem = onOpenDetail,
                 )
             }
+            item(key = "recentMovies") {
+                RecentlyAddedMoviesSection(
+                    items = recentMovieItems,
+                    baseUrl = state.imageBaseUrl,
+                    accessToken = state.imageAccessToken,
+                    onOpenItem = onOpenDetail,
+                )
+            }
+            item(key = "spacerAfterRecent") {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             if (isTvLibrary) {
+                if (seriesGroups.isNotEmpty()) {
+                    item(key = "allSeriesHeader") {
+                        SectionHeader(title = "All Series")
+                    }
+                }
                 items(
                     items = seriesGroups,
                     key = { it.id },
@@ -146,6 +216,11 @@ fun JellyfinBrowseScreen(
                     )
                 }
             } else {
+                if (state.libraryItems.isNotEmpty()) {
+                    item(key = "allItemsHeader") {
+                        SectionHeader(title = "All Items")
+                    }
+                }
                 items(
                     items = state.libraryItems,
                     key = { it.id },
@@ -339,6 +414,303 @@ private fun ContinueWatchingCard(
             }
         }
     }
+}
+
+@Composable
+private fun NextUpSection(
+    items: List<JellyfinItem>,
+    baseUrl: String?,
+    accessToken: String?,
+    onOpenItem: (JellyfinItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Next Up",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            AssistChip(
+                onClick = {},
+                enabled = false,
+                label = { Text("${items.size}") },
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        if (items.isEmpty()) {
+            EmptySectionMessage("No upcoming episodes yet")
+            return@Column
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.id }) { item ->
+                NextUpCard(
+                    item = item,
+                    baseUrl = baseUrl,
+                    accessToken = accessToken,
+                    onClick = { onOpenItem(item) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NextUpCard(
+    item: JellyfinItem,
+    baseUrl: String?,
+    accessToken: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.width(140.dp),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        PosterImage(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+            baseUrl = baseUrl,
+            itemId = item.parentId ?: item.seriesId ?: item.id,
+            primaryTag = item.primaryImageTag ?: item.seriesPrimaryImageTag,
+            thumbTag = item.thumbImageTag ?: item.seriesThumbImageTag,
+            backdropTag = item.backdropImageTag ?: item.seriesBackdropImageTag,
+            accessToken = accessToken,
+            contentDescription = item.name,
+            primaryImageItemId = item.parentId ?: item.seriesId,
+            thumbImageItemId = item.parentId ?: item.seriesId,
+            backdropImageItemId = item.parentId ?: item.seriesId,
+            logoImageItemId = item.parentId ?: item.seriesId,
+            logoTag = item.parentLogoImageTag,
+        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = item.seriesName ?: item.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = episodeLabel(item),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecentlyAddedShowsSection(
+    groups: List<TvSeriesGroup>,
+    baseUrl: String?,
+    accessToken: String?,
+    onOpenItem: (JellyfinItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        SectionHeader(title = "Recently Added Shows")
+        Spacer(modifier = Modifier.height(12.dp))
+        if (groups.isEmpty()) {
+            EmptySectionMessage("No shows available yet")
+            return@Column
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(groups, key = { it.id }) { group ->
+                SeriesPosterCard(
+                    group = group,
+                    baseUrl = baseUrl,
+                    accessToken = accessToken,
+                    onOpenSeries = onOpenItem,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesPosterCard(
+    group: TvSeriesGroup,
+    baseUrl: String?,
+    accessToken: String?,
+    onOpenSeries: (JellyfinItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val targetItem = group.openItem
+    Card(
+        modifier = modifier.width(140.dp),
+        onClick = { targetItem?.let(onOpenSeries) },
+        enabled = targetItem != null,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        PosterImage(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+            baseUrl = baseUrl,
+            itemId = group.posterItemId,
+            primaryTag = group.primaryImageTag,
+            thumbTag = group.thumbTag,
+            backdropTag = group.backdropTag,
+            accessToken = accessToken,
+            contentDescription = group.title,
+            primaryImageItemId = group.primaryImageItemId,
+            thumbImageItemId = group.primaryImageItemId,
+            backdropImageItemId = group.primaryImageItemId,
+            logoImageItemId = group.primaryImageItemId,
+            logoTag = group.logoTag,
+            preferLogo = true,
+        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = group.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            group.overview?.takeIf { it.isNotBlank() }?.let { overview ->
+                Text(
+                    text = overview,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentlyAddedMoviesSection(
+    items: List<JellyfinItem>,
+    baseUrl: String?,
+    accessToken: String?,
+    onOpenItem: (JellyfinItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        SectionHeader(title = "Recently Added Movies")
+        Spacer(modifier = Modifier.height(12.dp))
+        if (items.isEmpty()) {
+            EmptySectionMessage("No movies available yet")
+            return@Column
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.id }) { item ->
+                MoviePosterCard(
+                    item = item,
+                    baseUrl = baseUrl,
+                    accessToken = accessToken,
+                    onClick = { onOpenItem(item) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoviePosterCard(
+    item: JellyfinItem,
+    baseUrl: String?,
+    accessToken: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.width(140.dp),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        PosterImage(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+            baseUrl = baseUrl,
+            itemId = item.id,
+            primaryTag = item.primaryImageTag,
+            thumbTag = item.thumbImageTag,
+            backdropTag = item.backdropImageTag,
+            accessToken = accessToken,
+            contentDescription = item.name,
+        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = item.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val details =
+                listOfNotNull(
+                    item.productionYear?.toString(),
+                    item.officialRating,
+                ).joinToString(" • ")
+            if (details.isNotBlank()) {
+                Text(
+                    text = details,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun EmptySectionMessage(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 private data class TvSeriesGroup(

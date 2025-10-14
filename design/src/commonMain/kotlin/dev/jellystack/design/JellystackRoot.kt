@@ -17,6 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -31,6 +34,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -92,6 +97,12 @@ import kotlinx.coroutines.launch
 private enum class JellystackScreen {
     Home,
     Detail,
+}
+
+private enum class JellystackTab {
+    Home,
+    Library,
+    Media,
 }
 
 private sealed interface JellyfinDetailUiState {
@@ -174,6 +185,7 @@ fun JellystackRoot(
             PlaybackState.Stopped -> "Stopped"
         }
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
+    var currentTab by remember { mutableStateOf(JellystackTab.Home) }
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
     var detailJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -367,7 +379,12 @@ fun JellystackRoot(
             Surface {
                 val topBarTitle =
                     when (currentScreen) {
-                        JellystackScreen.Home -> "Jellystack"
+                        JellystackScreen.Home ->
+                            when (currentTab) {
+                                JellystackTab.Home -> "Jellyfin"
+                                JellystackTab.Library -> "Library"
+                                JellystackTab.Media -> "Media"
+                            }
                         JellystackScreen.Detail ->
                             when (val state = detailState) {
                                 is JellyfinDetailUiState.Loaded -> state.detail.name
@@ -415,21 +432,56 @@ fun JellystackRoot(
                             },
                         )
                     },
+                    bottomBar = {
+                        if (currentScreen == JellystackScreen.Home) {
+                            JellystackBottomBar(
+                                currentTab = currentTab,
+                                onTabSelected = { selected ->
+                                    currentTab = selected
+                                },
+                            )
+                        }
+                    },
                 ) { padding ->
                     when (currentScreen) {
                         JellystackScreen.Home ->
-                            HomeContent(
-                                browseState = browseState,
-                                onSelectLibrary = onSelectLibrary,
-                                onRefreshLibraries = onRefreshLibraries,
-                                onLoadMore = onLoadMore,
-                                onOpenItemDetail = onOpenItemDetail,
-                                onAddServer = {
-                                    isSettingsOpen = true
-                                    openAddServerDialog()
-                                },
-                                modifier = Modifier.padding(padding),
-                            )
+                            when (currentTab) {
+                                JellystackTab.Home ->
+                                    HomeContent(
+                                        browseState = browseState,
+                                        onSelectLibrary = onSelectLibrary,
+                                        onRefreshLibraries = onRefreshLibraries,
+                                        onLoadMore = onLoadMore,
+                                        onOpenItemDetail = onOpenItemDetail,
+                                        onAddServer = {
+                                            isSettingsOpen = true
+                                            openAddServerDialog()
+                                        },
+                                        modifier = Modifier.padding(padding),
+                                    )
+
+                                JellystackTab.Library ->
+                                    LibraryContent(
+                                        browseState = browseState,
+                                        onSelectLibrary = onSelectLibrary,
+                                        onRefreshLibraries = onRefreshLibraries,
+                                        onLoadMore = onLoadMore,
+                                        onOpenItemDetail = onOpenItemDetail,
+                                        onAddServer = {
+                                            isSettingsOpen = true
+                                            openAddServerDialog()
+                                        },
+                                        modifier = Modifier.padding(padding),
+                                    )
+
+                                JellystackTab.Media ->
+                                    MediaPlaceholder(
+                                        modifier =
+                                            Modifier
+                                                .padding(padding)
+                                                .fillMaxSize(),
+                                    )
+                            }
 
                         JellystackScreen.Detail ->
                             DetailContent(
@@ -486,6 +538,7 @@ private fun JellystackPreviewRoot(
             PlaybackState.Stopped -> "Stopped"
         }
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
+    var currentTab by remember { mutableStateOf(JellystackTab.Home) }
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
     var isSettingsOpen by remember { mutableStateOf(false) }
     val browseState = remember { JellyfinHomeState() }
@@ -495,7 +548,12 @@ private fun JellystackPreviewRoot(
             Surface {
                 val topBarTitle =
                     when (currentScreen) {
-                        JellystackScreen.Home -> "Jellystack"
+                        JellystackScreen.Home ->
+                            when (currentTab) {
+                                JellystackTab.Home -> "Jellyfin"
+                                JellystackTab.Library -> "Library"
+                                JellystackTab.Media -> "Media"
+                            }
                         JellystackScreen.Detail ->
                             when (val state = detailState) {
                                 is JellyfinDetailUiState.Loaded -> state.detail.name
@@ -540,21 +598,54 @@ private fun JellystackPreviewRoot(
                             },
                         )
                     },
+                    bottomBar = {
+                        if (currentScreen == JellystackScreen.Home) {
+                            JellystackBottomBar(
+                                currentTab = currentTab,
+                                onTabSelected = { selected -> currentTab = selected },
+                            )
+                        }
+                    },
                 ) { padding ->
                     when (currentScreen) {
                         JellystackScreen.Home ->
-                            HomeContent(
-                                browseState = browseState,
-                                onSelectLibrary = {},
-                                onRefreshLibraries = {},
-                                onLoadMore = {},
-                                onOpenItemDetail = {
-                                    detailState = JellyfinDetailUiState.Loading(it, null, null)
-                                    currentScreen = JellystackScreen.Detail
-                                },
-                                onAddServer = { isSettingsOpen = true },
-                                modifier = Modifier.padding(padding),
-                            )
+                            when (currentTab) {
+                                JellystackTab.Home ->
+                                    HomeContent(
+                                        browseState = browseState,
+                                        onSelectLibrary = {},
+                                        onRefreshLibraries = {},
+                                        onLoadMore = {},
+                                        onOpenItemDetail = {
+                                            detailState = JellyfinDetailUiState.Loading(it, null, null)
+                                            currentScreen = JellystackScreen.Detail
+                                        },
+                                        onAddServer = { isSettingsOpen = true },
+                                        modifier = Modifier.padding(padding),
+                                    )
+
+                                JellystackTab.Library ->
+                                    LibraryContent(
+                                        browseState = browseState,
+                                        onSelectLibrary = {},
+                                        onRefreshLibraries = {},
+                                        onLoadMore = {},
+                                        onOpenItemDetail = {
+                                            detailState = JellyfinDetailUiState.Loading(it, null, null)
+                                            currentScreen = JellystackScreen.Detail
+                                        },
+                                        onAddServer = { isSettingsOpen = true },
+                                        modifier = Modifier.padding(padding),
+                                    )
+
+                                JellystackTab.Media ->
+                                    MediaPlaceholder(
+                                        modifier =
+                                            Modifier
+                                                .padding(padding)
+                                                .fillMaxSize(),
+                                    )
+                            }
 
                         JellystackScreen.Detail ->
                             DetailContent(
@@ -588,7 +679,7 @@ private fun JellystackPreviewRoot(
 
 @Suppress("FunctionName")
 @Composable
-private fun HomeContent(
+private fun LibraryContent(
     browseState: JellyfinHomeState,
     onSelectLibrary: (String) -> Unit,
     onRefreshLibraries: () -> Unit,
@@ -612,6 +703,95 @@ private fun HomeContent(
             onOpenDetail = onOpenItemDetail,
             onConnectServer = onAddServer,
             modifier = Modifier.weight(1f, fill = true),
+        )
+    }
+}
+
+@Suppress("FunctionName")
+@Composable
+private fun HomeContent(
+    browseState: JellyfinHomeState,
+    onSelectLibrary: (String) -> Unit,
+    onRefreshLibraries: () -> Unit,
+    onLoadMore: () -> Unit,
+    onOpenItemDetail: (JellyfinItem) -> Unit,
+    onAddServer: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LibraryContent(
+        browseState = browseState,
+        onSelectLibrary = onSelectLibrary,
+        onRefreshLibraries = onRefreshLibraries,
+        onLoadMore = onLoadMore,
+        onOpenItemDetail = onOpenItemDetail,
+        onAddServer = onAddServer,
+        modifier = modifier,
+    )
+}
+
+@Suppress("FunctionName")
+@Composable
+private fun MediaPlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Media hub coming soon",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "This tab will connect to Jellyseerr in a future update.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Suppress("FunctionName")
+@Composable
+private fun JellystackBottomBar(
+    currentTab: JellystackTab,
+    onTabSelected: (JellystackTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    NavigationBar(modifier = modifier) {
+        NavigationBarItem(
+            selected = currentTab == JellystackTab.Home,
+            onClick = { onTabSelected(JellystackTab.Home) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Home,
+                    contentDescription = "Home",
+                )
+            },
+            label = { Text("Home") },
+        )
+        NavigationBarItem(
+            selected = currentTab == JellystackTab.Library,
+            onClick = { onTabSelected(JellystackTab.Library) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Folder,
+                    contentDescription = "Library",
+                )
+            },
+            label = { Text("Library") },
+        )
+        NavigationBarItem(
+            selected = currentTab == JellystackTab.Media,
+            onClick = { onTabSelected(JellystackTab.Media) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Movie,
+                    contentDescription = "Media",
+                )
+            },
+            label = { Text("Media") },
         )
     }
 }
