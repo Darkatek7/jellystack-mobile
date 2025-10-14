@@ -56,7 +56,7 @@ class GeneratedClientsTest {
             assertEquals("/Users/AuthenticateByName", request.url.encodedPath)
             val payload = request.bodyText()
             assertTrue(payload.contains("\"Username\":\"demo\""))
-            assertTrue(payload.contains("\"Password\":\"secret\""))
+            assertTrue(payload.contains("\"Pw\":\"secret\""))
 
             client.close()
         }

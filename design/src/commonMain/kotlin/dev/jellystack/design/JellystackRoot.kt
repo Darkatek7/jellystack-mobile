@@ -4,15 +4,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -20,10 +30,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -41,6 +53,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
@@ -48,6 +64,11 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.logging.JellystackLog
+import dev.jellystack.core.server.ConnectivityException
+import dev.jellystack.core.server.CredentialInput
+import dev.jellystack.core.server.ManagedServer
+import dev.jellystack.core.server.ServerRegistration
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
@@ -98,6 +119,24 @@ private fun JellyfinDetailUiState.withBaseUrl(imageBaseUrl: String?): JellyfinDe
         is JellyfinDetailUiState.Loading -> copy(imageBaseUrl = imageBaseUrl)
     }
 
+private data class ServerFormState(
+    val name: String = "",
+    val baseUrl: String = "",
+    val username: String = "",
+    val password: String = "",
+) {
+    val isValid: Boolean
+        get() = name.isNotBlank() && baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+}
+
+private data class ServerManagementUiState(
+    val servers: List<ManagedServer> = emptyList(),
+    val isDialogOpen: Boolean = false,
+    val form: ServerFormState = ServerFormState(),
+    val isSaving: Boolean = false,
+    val errorMessage: String? = null,
+)
+
 @Suppress("FunctionName", "ktlint:standard:function-naming")
 @Composable
 fun JellystackRoot(
@@ -125,17 +164,45 @@ fun JellystackRoot(
     val koin = remember { JellystackDI.koin }
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
     val serverRepository = remember { koin.get<ServerRepository>() }
+    val managedServers by serverRepository.observeServers().collectAsState()
     val browseCoordinator =
         remember(browseRepository, coroutineScope) {
             JellyfinBrowseCoordinator(browseRepository, coroutineScope)
         }
     val browseState by browseCoordinator.state.collectAsState()
 
+    var showAddServerDialog by remember { mutableStateOf(false) }
+    var serverFormState by remember { mutableStateOf(ServerFormState()) }
+    var isSavingServer by remember { mutableStateOf(false) }
+    var serverErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    val serverUiState =
+        ServerManagementUiState(
+            servers = managedServers,
+            isDialogOpen = showAddServerDialog,
+            form = serverFormState,
+            isSaving = isSavingServer,
+            errorMessage = serverErrorMessage,
+        )
+
     val playbackAction: (JellyfinItemDetail) -> Unit = { detail -> controller.play(detail.id) }
 
     val onSelectLibrary: (String) -> Unit = browseCoordinator::selectLibrary
     val onRefreshLibraries: () -> Unit = { browseCoordinator.bootstrap(forceRefresh = true) }
     val onLoadMore: () -> Unit = browseCoordinator::loadNextPage
+
+    val openAddServerDialog: () -> Unit = {
+        serverErrorMessage = null
+        serverFormState = ServerFormState()
+        showAddServerDialog = true
+    }
+
+    val dismissAddServerDialog = dismissAddServerDialog@{
+        if (isSavingServer) return@dismissAddServerDialog
+        showAddServerDialog = false
+        serverFormState = ServerFormState()
+        serverErrorMessage = null
+    }
 
     val loadDetail: (JellyfinItem, Boolean) -> Unit = { item, forceRefresh ->
         val baseUrl = browseCoordinator.state.value.imageBaseUrl
@@ -176,6 +243,65 @@ fun JellystackRoot(
     val onOpenItemDetail: (JellyfinItem) -> Unit = { item ->
         currentScreen = JellystackScreen.Detail
         loadDetail(item, false)
+    }
+
+    val submitServer = submitServer@{
+        if (isSavingServer) return@submitServer
+        val form = serverFormState
+        if (!form.isValid) {
+            serverErrorMessage = "All fields are required"
+            return@submitServer
+        }
+        coroutineScope.launch {
+            isSavingServer = true
+            serverErrorMessage = null
+            JellystackLog.d("Submitting Jellyfin server connection to ${form.baseUrl} as ${form.username}")
+            try {
+                serverRepository.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = form.name,
+                        baseUrl = form.baseUrl,
+                        credentials =
+                            CredentialInput.Jellyfin(
+                                username = form.username,
+                                password = form.password,
+                                deviceId = null,
+                            ),
+                    ),
+                )
+                browseCoordinator.bootstrap(forceRefresh = true)
+                serverFormState = ServerFormState()
+                showAddServerDialog = false
+                JellystackLog.d("Jellyfin server connected: ${form.baseUrl}")
+            } catch (t: Throwable) {
+                serverErrorMessage =
+                    when (t) {
+                        is ConnectivityException ->
+                            listOfNotNull(t.message, t.cause?.message)
+                                .joinToString(separator = ": ")
+                                .ifBlank { "Unable to connect to server" }
+                        else -> t.message ?: "Unable to connect to server"
+                    }
+                JellystackLog.e("Failed to connect to Jellyfin server ${form.baseUrl}: $serverErrorMessage", t)
+            } finally {
+                isSavingServer = false
+            }
+        }
+    }
+
+    val removeServer: (ManagedServer) -> Unit = { server ->
+        coroutineScope.launch {
+            try {
+                serverRepository.remove(server.id)
+                if (server.type == ServerType.JELLYFIN) {
+                    browseCoordinator.bootstrap(forceRefresh = true)
+                }
+                serverErrorMessage = null
+            } catch (t: Throwable) {
+                serverErrorMessage = t.message ?: "Failed to remove server"
+            }
+        }
     }
 
     val onRetryDetail: () -> Unit = {
@@ -229,6 +355,7 @@ fun JellystackRoot(
                             onRefreshLibraries = onRefreshLibraries,
                             onLoadMore = onLoadMore,
                             onOpenItemDetail = onOpenItemDetail,
+                            onAddServer = openAddServerDialog,
                         )
 
                     JellystackScreen.Settings ->
@@ -236,6 +363,13 @@ fun JellystackRoot(
                             isDarkTheme = isDarkTheme,
                             onToggleTheme = themeController::toggle,
                             onBack = { currentScreen = JellystackScreen.Home },
+                            serverState = serverUiState,
+                            onOpenAddServer = openAddServerDialog,
+                            onDismissAddServer = dismissAddServerDialog,
+                            onUpdateServerForm = { serverFormState = it },
+                            onSubmitServer = submitServer,
+                            onRemoveServer = removeServer,
+                            onClearServerError = { serverErrorMessage = null },
                         )
 
                     JellystackScreen.Detail ->
@@ -285,6 +419,7 @@ private fun JellystackPreviewRoot(
                             onRefreshLibraries = {},
                             onLoadMore = {},
                             onOpenItemDetail = {},
+                            onAddServer = {},
                         )
 
                     JellystackScreen.Settings ->
@@ -292,6 +427,13 @@ private fun JellystackPreviewRoot(
                             isDarkTheme = isDarkTheme,
                             onToggleTheme = themeController::toggle,
                             onBack = { currentScreen = JellystackScreen.Home },
+                            serverState = ServerManagementUiState(),
+                            onOpenAddServer = {},
+                            onDismissAddServer = {},
+                            onUpdateServerForm = {},
+                            onSubmitServer = {},
+                            onRemoveServer = {},
+                            onClearServerError = {},
                         )
 
                     JellystackScreen.Detail ->
@@ -322,6 +464,7 @@ private fun HomeScreen(
     onRefreshLibraries: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenItemDetail: (JellyfinItem) -> Unit,
+    onAddServer: () -> Unit,
 ) {
     JellystackScaffold(
         title = "Jellystack",
@@ -352,6 +495,7 @@ private fun HomeScreen(
                 onRefresh = onRefreshLibraries,
                 onLoadMore = onLoadMore,
                 onOpenDetail = onOpenItemDetail,
+                onConnectServer = onAddServer,
                 modifier = Modifier.weight(1f, fill = true),
             )
         }
@@ -448,6 +592,13 @@ private fun SettingsScreen(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onBack: () -> Unit,
+    serverState: ServerManagementUiState,
+    onOpenAddServer: () -> Unit,
+    onDismissAddServer: () -> Unit,
+    onUpdateServerForm: (ServerFormState) -> Unit,
+    onSubmitServer: () -> Unit,
+    onRemoveServer: (ManagedServer) -> Unit,
+    onClearServerError: () -> Unit,
 ) {
     JellystackScaffold(
         title = "Settings",
@@ -493,8 +644,161 @@ private fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+            HorizontalDivider()
+            Text(
+                text = "Jellyfin",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            val jellyfinServers = serverState.servers.filter { it.type == ServerType.JELLYFIN }
+            if (jellyfinServers.isEmpty()) {
+                AssistChip(
+                    onClick = onOpenAddServer,
+                    label = { Text("Connect a Jellyfin server") },
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    jellyfinServers.forEach { server ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(server.name, style = MaterialTheme.typography.titleMedium)
+                                Text(server.baseUrl, style = MaterialTheme.typography.bodyMedium)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    TextButton(onClick = { onRemoveServer(server) }) {
+                                        Text("Remove")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Button(onClick = onOpenAddServer) {
+                Text("Add Jellyfin server")
+            }
         }
     }
+    if (serverState.isDialogOpen) {
+        AddServerDialog(
+            state = serverState.form,
+            isSaving = serverState.isSaving,
+            errorMessage = serverState.errorMessage,
+            onValueChange = onUpdateServerForm,
+            onClearError = onClearServerError,
+            onDismiss = onDismissAddServer,
+            onSubmit = onSubmitServer,
+        )
+    }
+}
+
+@Suppress("FunctionName")
+@Composable
+private fun AddServerDialog(
+    state: ServerFormState,
+    isSaving: Boolean,
+    errorMessage: String?,
+    onValueChange: (ServerFormState) -> Unit,
+    onClearError: () -> Unit,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        title = { Text("Connect Jellyfin server") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = {
+                        onValueChange(state.copy(name = it))
+                        onClearError()
+                    },
+                    label = { Text("Display name") },
+                    singleLine = true,
+                    enabled = !isSaving,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    value = state.baseUrl,
+                    onValueChange = {
+                        onValueChange(state.copy(baseUrl = it))
+                        onClearError()
+                    },
+                    label = { Text("Base URL") },
+                    singleLine = true,
+                    enabled = !isSaving,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Uri),
+                )
+                OutlinedTextField(
+                    value = state.username,
+                    onValueChange = {
+                        onValueChange(state.copy(username = it))
+                        onClearError()
+                    },
+                    label = { Text("Username") },
+                    singleLine = true,
+                    enabled = !isSaving,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = {
+                        onValueChange(state.copy(password = it))
+                        onClearError()
+                    },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    enabled = !isSaving,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(imageVector = icon, contentDescription = if (passwordVisible) "Hide password" else "Show password")
+                        }
+                    },
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSubmit,
+                enabled = state.isValid && !isSaving,
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Connecting…")
+                } else {
+                    Text("Connect")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

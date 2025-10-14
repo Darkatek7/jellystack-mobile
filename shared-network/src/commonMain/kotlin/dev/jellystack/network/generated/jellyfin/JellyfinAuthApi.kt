@@ -3,11 +3,15 @@ package dev.jellystack.network.generated.jellyfin
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.headers
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.http.path
 import io.ktor.http.takeFrom
 import kotlinx.serialization.SerialName
@@ -18,10 +22,10 @@ import kotlinx.serialization.Serializable
 data class AuthenticateByNameRequest(
     @SerialName("Username")
     val username: String,
-    @SerialName("Password")
-    val password: String,
     @SerialName("Pw")
-    val hashedPassword: String? = null, // Optional PBKDF2 hash expected by older Jellyfin servers.
+    val password: String, // Plain text password for authentication.
+    @SerialName("Password")
+    val legacyPasswordHash: String? = null, // Optional SHA1 password hash supported by legacy Jellyfin builds.
     @SerialName("DeviceId")
     val deviceId: String? = null,
 )
@@ -65,6 +69,43 @@ class JellyfinAuthApi(
                 method = HttpMethod.Post
                 configureUrl("/Users/AuthenticateByName")
                 contentType(ContentType.Application.Json)
+                headers {
+                    append(
+                        "X-Emby-Authorization",
+                        buildString {
+                            append("MediaBrowser Client=\"Jellystack\"")
+                            append(", Device=\"")
+                            append(payload.deviceId ?: payload.username)
+                            append("\"")
+                            append(", DeviceId=\"")
+                            append(payload.deviceId ?: payload.username)
+                            append("\"")
+                            append(", Version=\"0.1\"")
+                        },
+                    )
+                }
                 setBody(payload)
-            }.body<AuthenticateByNameResponse>()
+            }.consumeAsJson()
+
+    private suspend fun HttpResponse.consumeAsJson(): AuthenticateByNameResponse {
+        if (!status.isSuccess()) {
+            val bodyText = runCatching { bodyAsText() }.getOrNull()
+            throw JellyfinAuthHttpException(status.value, bodyText)
+        }
+        return body()
+    }
 }
+
+class JellyfinAuthHttpException(
+    val code: Int,
+    val payload: String?,
+) : RuntimeException(
+        buildString {
+            append("Jellyfin auth failed with status ")
+            append(code)
+            payload?.takeIf { it.isNotBlank() }?.let {
+                append(": ")
+                append(it)
+            }
+        },
+    )

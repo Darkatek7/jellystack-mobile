@@ -63,6 +63,7 @@ fun JellyfinBrowseScreen(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenDetail: (JellyfinItem) -> Unit,
+    onConnectServer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -99,6 +100,7 @@ fun JellyfinBrowseScreen(
                 StatusBanner(
                     state = state,
                     onRetry = onRefresh,
+                    onConnect = onConnectServer,
                 )
             }
             items(
@@ -385,6 +387,7 @@ private fun PosterImage(
 private fun StatusBanner(
     state: JellyfinHomeState,
     onRetry: () -> Unit,
+    onConnect: () -> Unit,
 ) {
     when {
         state.errorMessage != null -> {
@@ -409,8 +412,8 @@ private fun StatusBanner(
             )
         state.libraries.isEmpty() ->
             AssistChip(
-                onClick = {},
-                enabled = false,
+                onClick = onConnect,
+                enabled = true,
                 label = { Text("Connect a Jellyfin server to start browsing") },
             )
         else -> Spacer(modifier = Modifier.height(1.dp))

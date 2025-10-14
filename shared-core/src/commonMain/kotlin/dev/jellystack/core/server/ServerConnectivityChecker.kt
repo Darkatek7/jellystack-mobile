@@ -1,9 +1,11 @@
 package dev.jellystack.core.server
 
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.generated.jellyfin.AuthenticateByNameRequest
 import dev.jellystack.network.generated.jellyfin.JellyfinAuthApi
+import dev.jellystack.network.generated.jellyfin.JellyfinAuthHttpException
 import dev.jellystack.network.generated.jellyseerr.JellyseerrStatusApi
 import dev.jellystack.network.generated.radarr.RadarrSystemApi
 import dev.jellystack.network.generated.sonarr.SonarrSystemApi
@@ -25,6 +27,7 @@ class ServerConnectivityChecker(
         val creds =
             registration.credentials as? CredentialInput.Jellyfin
                 ?: return ConnectivityResult.Failure("Jellyfin credentials are required")
+        JellystackLog.d("Attempting Jellyfin auth at ${registration.baseUrl} as ${creds.username}")
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
             val api = JellyfinAuthApi(client, registration.baseUrl)
@@ -37,17 +40,40 @@ class ServerConnectivityChecker(
                         deviceId = deviceId,
                     ),
                 )
-            ConnectivityResult.Success(
-                message = "Authenticated as ${response.user.name ?: response.user.id}",
-                credentials =
-                    StoredCredential.Jellyfin(
-                        username = creds.username,
-                        deviceId = deviceId,
-                        accessToken = response.accessToken,
-                        userId = response.user.id,
-                    ),
+            ConnectivityResult
+                .Success(
+                    message = "Authenticated as ${response.user.name ?: response.user.id}",
+                    credentials =
+                        StoredCredential.Jellyfin(
+                            username = creds.username,
+                            deviceId = deviceId,
+                            accessToken = response.accessToken,
+                            userId = response.user.id,
+                        ),
+                ).also {
+                    JellystackLog.d(
+                        "Jellyfin auth succeeded for ${registration.baseUrl} as ${creds.username}",
+                    )
+                }
+        } catch (http: JellyfinAuthHttpException) {
+            val message =
+                buildString {
+                    append("Jellyfin authentication failed (status ${http.code})")
+                    http.payload?.takeIf { it.isNotBlank() }?.let {
+                        append(": ")
+                        append(it)
+                    }
+                }
+            JellystackLog.e(
+                "Jellyfin auth failed for ${registration.baseUrl}: $message",
+                http,
             )
+            ConnectivityResult.Failure(message, http)
         } catch (t: Throwable) {
+            JellystackLog.e(
+                "Jellyfin auth failed for ${registration.baseUrl}: ${t.message}",
+                t,
+            )
             ConnectivityResult.Failure("Jellyfin authentication failed", t)
         } finally {
             client.close()
@@ -67,6 +93,7 @@ class ServerConnectivityChecker(
                 credentials = StoredCredential.ApiKey(creds.apiKey),
             )
         } catch (t: Throwable) {
+            JellystackLog.e("Sonarr connectivity failed for ${registration.baseUrl}: ${t.message}", t)
             ConnectivityResult.Failure("Sonarr connectivity failed", t)
         } finally {
             client.close()
@@ -86,6 +113,7 @@ class ServerConnectivityChecker(
                 credentials = StoredCredential.ApiKey(creds.apiKey),
             )
         } catch (t: Throwable) {
+            JellystackLog.e("Radarr connectivity failed for ${registration.baseUrl}: ${t.message}", t)
             ConnectivityResult.Failure("Radarr connectivity failed", t)
         } finally {
             client.close()
@@ -105,6 +133,7 @@ class ServerConnectivityChecker(
                 credentials = StoredCredential.ApiKey(creds.apiKey),
             )
         } catch (t: Throwable) {
+            JellystackLog.e("Jellyseerr connectivity failed for ${registration.baseUrl}: ${t.message}", t)
             ConnectivityResult.Failure("Jellyseerr connectivity failed", t)
         } finally {
             client.close()

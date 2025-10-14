@@ -66,13 +66,18 @@ private val serviceSpecs =
                         properties =
                             listOf(
                                 PropertySpec("username", "String", serialName = "Username"),
-                                PropertySpec("password", "String", serialName = "Password"),
                                 PropertySpec(
-                                    name = "hashedPassword",
+                                    name = "password",
+                                    type = "String",
+                                    description = "Plain text password for authentication.",
+                                    serialName = "Pw",
+                                ),
+                                PropertySpec(
+                                    name = "legacyPasswordHash",
                                     type = "String",
                                     nullable = true,
-                                    description = "Optional PBKDF2 hash expected by older Jellyfin servers.",
-                                    serialName = "Pw",
+                                    description = "Optional SHA1 password hash supported by legacy Jellyfin builds.",
+                                    serialName = "Password",
                                 ),
                                 PropertySpec("deviceId", "String", nullable = true, serialName = "DeviceId"),
                             ),
