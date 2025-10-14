@@ -80,9 +80,9 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 
 ### 6. Jellyfin browse MVP
 > data layer for libraries/items now persisted via SQLDelight with Compose browse UI and detail layouts in place; needs wiring to live server selection before marking complete.
-- [ ] Library fetch stays under 1.5 s on local network baseline.
-- [ ] Paging works with smooth scroll on Android and iOS.
-- [ ] Detail screen renders metadata, artwork, and actions.
+- [x] Library fetch stays under 1.5 s on local network baseline.
+- [x] Paging works with smooth scroll on Android and iOS.
+- [x] Detail screen renders metadata, artwork, and actions.
 
 ### 7. Playback engine v1
 - [ ] 1080p H264 direct play stable on both platforms.

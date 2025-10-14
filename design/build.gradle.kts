@@ -30,6 +30,7 @@ kotlin {
                 implementation(libs.compose.material.icons)
                 implementation(libs.compose.windowsize)
                 implementation(libs.coroutines.core)
+                implementation(libs.koin.core)
             }
         }
         val commonTest by getting {

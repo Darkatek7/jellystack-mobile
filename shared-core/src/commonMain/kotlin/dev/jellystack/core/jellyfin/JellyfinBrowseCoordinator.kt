@@ -2,6 +2,8 @@ package dev.jellystack.core.jellyfin
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,17 +54,28 @@ class JellyfinBrowseCoordinator(
                                 cachedLibraries
                             }
                         val selectedId = selectDefaultLibrary(libraries)
-                        val continueWatching = repository.refreshContinueWatching(limit = 12)
                         val imageBaseUrl = repository.currentServerBaseUrl()
-                        val firstPage =
-                            selectedId?.let { id ->
-                                val cached = repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
-                                if (cached.isNotEmpty() && !forceRefresh) {
-                                    cached
-                                } else {
-                                    repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
-                                }
-                            } ?: emptyList()
+
+                        val (continueWatching, firstPage) =
+                            coroutineScope {
+                                val continueWatchingDeferred = async { repository.refreshContinueWatching(limit = 12) }
+                                val firstPageDeferred =
+                                    selectedId?.let { id ->
+                                        async {
+                                            val cached = repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
+                                            if (cached.isNotEmpty() && !forceRefresh) {
+                                                cached
+                                            } else {
+                                                repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
+                                            }
+                                        }
+                                    }
+
+                                val continueWatchingResult = continueWatchingDeferred.await()
+                                val firstPageResult = firstPageDeferred?.await() ?: emptyList()
+                                continueWatchingResult to firstPageResult
+                            }
+
                         mutableState.value =
                             mutableState.value.copy(
                                 isInitialLoading = false,

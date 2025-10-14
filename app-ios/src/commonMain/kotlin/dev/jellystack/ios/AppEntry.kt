@@ -3,6 +3,7 @@ package dev.jellystack.ios
 import androidx.compose.runtime.Composable
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.design.JellystackRoot
+import dev.jellystack.ios.di.iosAppModule
 import io.github.aakira.napier.DebugAntilog
 import io.github.aakira.napier.Napier
 import org.koin.core.context.startKoin
@@ -13,7 +14,7 @@ fun ComposeEntry() {
     configureLogging()
     if (!JellystackDI.isStarted()) {
         startKoin {
-            modules(JellystackDI.modules)
+            modules(JellystackDI.modules + iosAppModule)
         }
     }
     JellystackRoot()

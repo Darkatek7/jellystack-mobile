@@ -1,6 +1,7 @@
 package dev.jellystack.app
 
 import android.app.Application
+import dev.jellystack.app.di.androidAppModule
 import dev.jellystack.core.di.JellystackDI
 import io.github.aakira.napier.DebugAntilog
 import io.github.aakira.napier.Napier
@@ -14,7 +15,7 @@ class JellystackApplication : Application() {
         if (!JellystackDI.isStarted()) {
             startKoin {
                 androidContext(this@JellystackApplication)
-                modules(JellystackDI.modules)
+                modules(JellystackDI.modules + androidAppModule)
             }
         }
     }

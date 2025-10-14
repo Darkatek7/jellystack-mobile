@@ -21,17 +21,21 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -442,13 +446,16 @@ private fun LoadMoreListener(
 fun JellyfinDetailContent(
     detail: JellyfinItemDetail,
     baseUrl: String?,
+    onPlay: () -> Unit,
+    onQueueDownload: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
@@ -466,6 +473,14 @@ fun JellyfinDetailContent(
             primaryTag = detail.primaryImageTag,
             contentDescription = detail.name,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FilledTonalButton(onClick = onPlay) {
+                Text(text = "Play")
+            }
+            OutlinedButton(onClick = onQueueDownload) {
+                Text(text = "Download")
+            }
+        }
         if (detail.taglines.isNotEmpty()) {
             Text(
                 text = detail.taglines.joinToString(separator = "\n"),
@@ -520,6 +535,37 @@ fun JellyfinDetailContent(
                         }
                     }
                 }
+            }
+        }
+        if (detail.genres.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Genres",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                detail.genres.joinToString(separator = ", ").takeIf { it.isNotBlank() }?.let { genres ->
+                    Text(
+                        text = genres,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
+        if (detail.studios.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Studios",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                detail.studios
+                    .joinToString(separator = ", ")
+                    .takeIf { it.isNotBlank() }
+                    ?.let { studios ->
+                        Text(
+                            text = studios,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
             }
         }
     }
