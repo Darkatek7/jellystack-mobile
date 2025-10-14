@@ -22,7 +22,9 @@ private data class ModelSpec(
     val properties: List<PropertySpec>,
 )
 
-private enum class HttpMethod(val value: String) {
+private enum class HttpMethod(
+    val value: String,
+) {
     GET("HttpMethod.Get"),
     POST("HttpMethod.Post"),
 }
@@ -206,10 +208,13 @@ private val serviceSpecs =
 
 fun main(args: Array<String>) {
     val projectRoot =
-        args.firstOrNull()?.let { Paths.get(it) }
+        args
+            .firstOrNull()
+            ?.let { Paths.get(it) }
             ?.toAbsolutePath()
             ?.normalize()
-            ?: Paths.get("..")
+            ?: Paths
+                .get("..")
                 .toAbsolutePath()
                 .normalize()
 
@@ -219,7 +224,8 @@ fun main(args: Array<String>) {
         )
 
     if (outputDir.exists()) {
-        Files.walk(outputDir)
+        Files
+            .walk(outputDir)
             .sorted(Comparator.reverseOrder())
             .forEach { path ->
                 if (Files.isRegularFile(path) && path.extension == "kt") {
@@ -334,8 +340,8 @@ private fun ServiceSpec.renderFile(): String {
     return builder.toString()
 }
 
-private fun ModelSpec.renderProperties(): String {
-    return properties.joinToString(separator = "\n", postfix = "\n") { property ->
+private fun ModelSpec.renderProperties(): String =
+    properties.joinToString(separator = "\n", postfix = "\n") { property ->
         val nullableMark = if (property.nullable) "?" else ""
         val defaultValue = if (property.nullable) " = null" else ""
         val doc = property.description?.let { " // $it" } ?: ""
@@ -348,4 +354,3 @@ private fun ModelSpec.renderProperties(): String {
             append("    val ${property.name}: ${property.type}$nullableMark$defaultValue,$doc")
         }
     }
-}

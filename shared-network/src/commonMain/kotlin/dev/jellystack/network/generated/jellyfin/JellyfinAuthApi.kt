@@ -6,12 +6,12 @@ import io.ktor.client.call.body
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
-import io.ktor.http.contentType
 import io.ktor.http.HttpMethod
+import io.ktor.http.contentType
 import io.ktor.http.path
 import io.ktor.http.takeFrom
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /** Credentials payload for the Jellyfin authenticate-by-name endpoint. */
 @Serializable
@@ -60,11 +60,11 @@ class JellyfinAuthApi(
 
     /** Authenticate a user by username/password and return access token. */
     suspend fun authenticateByName(payload: AuthenticateByNameRequest): AuthenticateByNameResponse =
-        client.request {
-            method = HttpMethod.Post
-            configureUrl("/Users/AuthenticateByName")
-            contentType(ContentType.Application.Json)
-            setBody(payload)
-        }.body<AuthenticateByNameResponse>()
-
+        client
+            .request {
+                method = HttpMethod.Post
+                configureUrl("/Users/AuthenticateByName")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }.body<AuthenticateByNameResponse>()
 }

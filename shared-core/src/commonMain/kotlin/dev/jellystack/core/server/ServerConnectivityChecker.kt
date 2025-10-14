@@ -22,8 +22,9 @@ class ServerConnectivityChecker(
         }
 
     private suspend fun authenticateJellyfin(registration: ServerRegistration): ConnectivityResult {
-        val creds = registration.credentials as? CredentialInput.Jellyfin
-            ?: return ConnectivityResult.Failure("Jellyfin credentials are required")
+        val creds =
+            registration.credentials as? CredentialInput.Jellyfin
+                ?: return ConnectivityResult.Failure("Jellyfin credentials are required")
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
             val api = JellyfinAuthApi(client, registration.baseUrl)
@@ -54,8 +55,9 @@ class ServerConnectivityChecker(
     }
 
     private suspend fun pingSonarr(registration: ServerRegistration): ConnectivityResult {
-        val creds = registration.credentials as? CredentialInput.ApiKey
-            ?: return ConnectivityResult.Failure("Sonarr API key is required")
+        val creds =
+            registration.credentials as? CredentialInput.ApiKey
+                ?: return ConnectivityResult.Failure("Sonarr API key is required")
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
             val api = SonarrSystemApi(client, registration.baseUrl, creds.apiKey)
@@ -72,8 +74,9 @@ class ServerConnectivityChecker(
     }
 
     private suspend fun pingRadarr(registration: ServerRegistration): ConnectivityResult {
-        val creds = registration.credentials as? CredentialInput.ApiKey
-            ?: return ConnectivityResult.Failure("Radarr API key is required")
+        val creds =
+            registration.credentials as? CredentialInput.ApiKey
+                ?: return ConnectivityResult.Failure("Radarr API key is required")
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
             val api = RadarrSystemApi(client, registration.baseUrl, creds.apiKey)
@@ -90,8 +93,9 @@ class ServerConnectivityChecker(
     }
 
     private suspend fun pingJellyseerr(registration: ServerRegistration): ConnectivityResult {
-        val creds = registration.credentials as? CredentialInput.ApiKey
-            ?: return ConnectivityResult.Failure("Jellyseerr API key is required")
+        val creds =
+            registration.credentials as? CredentialInput.ApiKey
+                ?: return ConnectivityResult.Failure("Jellyseerr API key is required")
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
             val api = JellyseerrStatusApi(client, registration.baseUrl, creds.apiKey)

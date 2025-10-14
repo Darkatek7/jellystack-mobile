@@ -25,11 +25,13 @@ kotlin {
                 implementation(libs.coroutines.core)
                 implementation(libs.sqldelight.runtime)
                 implementation(libs.sqldelight.coroutines)
+                implementation(libs.kotlinx.datetime)
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+                implementation(libs.coroutines.test)
             }
         }
         val androidMain by getting {

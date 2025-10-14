@@ -68,8 +68,7 @@ class ServerRepository(
         servers.value = loadServers()
     }
 
-    private suspend fun loadServers(): List<ManagedServer> =
-        store.list().map { it.toManagedServer() }
+    private suspend fun loadServers(): List<ManagedServer> = store.list().map { it.toManagedServer() }
 
     private fun validate(request: ServerRegistration) {
         if (request.name.isBlank()) {
@@ -97,8 +96,8 @@ class ServerRepository(
         credential: StoredCredential,
         createdAt: Instant,
         updatedAt: Instant,
-    ): ServerRecord {
-        return when (credential) {
+    ): ServerRecord =
+        when (credential) {
             is StoredCredential.Jellyfin ->
                 ServerRecord(
                     id = id,
@@ -128,7 +127,6 @@ class ServerRepository(
                     updatedAt = updatedAt,
                 )
         }
-    }
 
     private fun ServerRecord.toManagedServer(): ManagedServer {
         val storedCredential =

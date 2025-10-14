@@ -31,8 +31,7 @@ kotlin {
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
                 implementation(libs.ktor.http)
-                implementation(platform("io.insert-koin:koin-bom:3.5.6"))
-                implementation("io.insert-koin:koin-core")
+                implementation(libs.koin.core)
             }
         }
         val commonTest by getting {
@@ -46,8 +45,8 @@ kotlin {
             dependencies {
                 implementation(libs.coroutines.android)
                 implementation(libs.androidx.security.crypto)
-                implementation("io.insert-koin:koin-android")
-                implementation("io.insert-koin:koin-androidx-compose")
+                implementation(libs.koin.android)
+                implementation(libs.koin.compose)
             }
         }
     }

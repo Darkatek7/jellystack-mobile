@@ -7,7 +7,9 @@ sealed interface CredentialInput {
         val deviceId: String? = null,
     ) : CredentialInput
 
-    data class ApiKey(val apiKey: String) : CredentialInput
+    data class ApiKey(
+        val apiKey: String,
+    ) : CredentialInput
 }
 
 sealed interface StoredCredential {
@@ -18,5 +20,7 @@ sealed interface StoredCredential {
         val userId: String,
     ) : StoredCredential
 
-    data class ApiKey(val apiKey: String) : StoredCredential
+    data class ApiKey(
+        val apiKey: String,
+    ) : StoredCredential
 }

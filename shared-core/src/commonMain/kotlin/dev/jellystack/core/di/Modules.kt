@@ -9,9 +9,9 @@ import dev.jellystack.core.security.SecureStoreLogger
 import dev.jellystack.core.security.SecureStoreNapierLogger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import org.koin.core.context.GlobalContext
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.koin.mp.KoinPlatformTools
 
 fun coreModule(): Module =
     module {
@@ -36,6 +36,7 @@ fun sharedModules(): List<Module> = listOf(coreModule(), platformModule())
 
 object JellystackDI {
     val modules: List<Module> get() = sharedModules()
-    val koin by lazy { GlobalContext.get() }
-    fun isStarted(): Boolean = GlobalContext.getOrNull() != null
+    val koin by lazy { KoinPlatformTools.defaultContext().get() }
+
+    fun isStarted(): Boolean = KoinPlatformTools.defaultContext().getOrNull() != null
 }

@@ -1,7 +1,5 @@
 package dev.jellystack.database
 
-import app.cash.sqldelight.executeAsList
-import app.cash.sqldelight.executeAsOneOrNull
 import dev.jellystack.core.server.ServerRecord
 import dev.jellystack.core.server.ServerStore
 import dev.jellystack.core.server.ServerType
@@ -10,14 +8,14 @@ import kotlinx.datetime.Instant
 class SqlDelightServerStore(
     private val queries: ServersQueries,
 ) : ServerStore {
-    override suspend fun list(): List<ServerRecord> =
-        queries.selectAll().executeAsList().map { it.toRecord() }
+    override suspend fun list(): List<ServerRecord> = queries.selectAll().executeAsList().map { it.toRecord() }
 
-    override suspend fun findByTypeAndUrl(type: ServerType, baseUrl: String): ServerRecord? =
-        queries.selectByTypeAndUrl(type.name, baseUrl).executeAsOneOrNull()?.toRecord()
+    override suspend fun findByTypeAndUrl(
+        type: ServerType,
+        baseUrl: String,
+    ): ServerRecord? = queries.selectByTypeAndUrl(type.name, baseUrl).executeAsOneOrNull()?.toRecord()
 
-    override suspend fun get(id: String): ServerRecord? =
-        queries.selectById(id).executeAsOneOrNull()?.toRecord()
+    override suspend fun get(id: String): ServerRecord? = queries.selectById(id).executeAsOneOrNull()?.toRecord()
 
     override suspend fun upsert(record: ServerRecord) {
         queries.insertOrReplace(

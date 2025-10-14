@@ -21,15 +21,30 @@ data class ManagedServer(
 )
 
 sealed class ConnectivityResult {
-    data class Success(val message: String, val credentials: StoredCredential) : ConnectivityResult()
+    data class Success(
+        val message: String,
+        val credentials: StoredCredential,
+    ) : ConnectivityResult()
 
-    data class Failure(val message: String, val cause: Throwable? = null) : ConnectivityResult()
+    data class Failure(
+        val message: String,
+        val cause: Throwable? = null,
+    ) : ConnectivityResult()
 }
 
-class DuplicateServerException(val existingId: String, val type: ServerType, val baseUrl: String) : IllegalStateException(
-    "Server already exists for ${type.name} at $baseUrl",
-)
+class DuplicateServerException(
+    val existingId: String,
+    val type: ServerType,
+    val baseUrl: String,
+) : IllegalStateException(
+        "Server already exists for ${type.name} at $baseUrl",
+    )
 
-class InvalidServerConfiguration(message: String) : IllegalArgumentException(message)
+class InvalidServerConfiguration(
+    message: String,
+) : IllegalArgumentException(message)
 
-class ConnectivityException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+class ConnectivityException(
+    message: String,
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)

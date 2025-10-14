@@ -3,11 +3,12 @@ package dev.jellystack.core.server
 import io.ktor.http.Url
 
 fun normalizeBaseUrl(raw: String): String {
-    val parsed = try {
-        Url(raw)
-    } catch (_: Throwable) {
-        throw InvalidServerConfiguration("Server URL is not valid: $raw")
-    }
+    val parsed =
+        try {
+            Url(raw)
+        } catch (_: Throwable) {
+            throw InvalidServerConfiguration("Server URL is not valid: $raw")
+        }
 
     val scheme = parsed.protocol.name.lowercase()
     if (scheme != "http" && scheme != "https") {
@@ -18,10 +19,11 @@ fun normalizeBaseUrl(raw: String): String {
     }
 
     val normalizedPath = parsed.encodedPath.trimEnd('/')
-    val portPart = when {
-        parsed.port == parsed.protocol.defaultPort || parsed.port == 0 -> ""
-        else -> ":${parsed.port}"
-    }
+    val portPart =
+        when {
+            parsed.port == parsed.protocol.defaultPort || parsed.port == 0 -> ""
+            else -> ":${parsed.port}"
+        }
     return buildString {
         append(scheme)
         append("://")

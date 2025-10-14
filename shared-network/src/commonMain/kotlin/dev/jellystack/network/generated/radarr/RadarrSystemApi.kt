@@ -3,8 +3,8 @@ package dev.jellystack.network.generated.radarr
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.request.request
 import io.ktor.client.request.header
+import io.ktor.client.request.request
 import io.ktor.http.HttpMethod
 import io.ktor.http.path
 import io.ktor.http.takeFrom
@@ -39,10 +39,10 @@ class RadarrSystemApi(
 
     /** Retrieve system status meta data to verify connectivity and auth. */
     suspend fun fetchSystemStatus(): SystemStatusResponse =
-        client.request {
-            method = HttpMethod.Get
-            configureUrl("/api/v3/system/status")
-            applyAuth()
-        }.body<SystemStatusResponse>()
-
+        client
+            .request {
+                method = HttpMethod.Get
+                configureUrl("/api/v3/system/status")
+                applyAuth()
+            }.body<SystemStatusResponse>()
 }

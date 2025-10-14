@@ -19,7 +19,10 @@ data class ServerRecord(
 interface ServerStore {
     suspend fun list(): List<ServerRecord>
 
-    suspend fun findByTypeAndUrl(type: ServerType, baseUrl: String): ServerRecord?
+    suspend fun findByTypeAndUrl(
+        type: ServerType,
+        baseUrl: String,
+    ): ServerRecord?
 
     suspend fun get(id: String): ServerRecord?
 

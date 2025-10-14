@@ -3,8 +3,8 @@ package dev.jellystack.network.generated.jellyseerr
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.request.request
 import io.ktor.client.request.header
+import io.ktor.client.request.request
 import io.ktor.http.HttpMethod
 import io.ktor.http.path
 import io.ktor.http.takeFrom
@@ -38,10 +38,10 @@ class JellyseerrStatusApi(
 
     /** Retrieve Jellyseerr status for connectivity verification. */
     suspend fun fetchStatus(): StatusResponse =
-        client.request {
-            method = HttpMethod.Get
-            configureUrl("/api/v1/status")
-            applyAuth()
-        }.body<StatusResponse>()
-
+        client
+            .request {
+                method = HttpMethod.Get
+                configureUrl("/api/v1/status")
+                applyAuth()
+            }.body<StatusResponse>()
 }

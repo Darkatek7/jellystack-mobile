@@ -21,129 +21,132 @@ import kotlin.test.assertTrue
 
 class GeneratedClientsTest {
     @Test
-    fun jellyfinAuthSerializesAndParses() = runTest {
-        val recorded = mutableListOf<HttpRequestData>()
-        val engine =
-            MockEngine { request ->
-                recorded += request
-                respond(
-                    content =
-                        """
-                        {"AccessToken":"token123","User":{"Id":"user42","Name":"Demo"},"ServerId":"srv"}
-                        """.trimIndent(),
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+    fun jellyfinAuthSerializesAndParses() =
+        runTest {
+            val recorded = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    recorded += request
+                    respond(
+                        content =
+                            """
+                            {"AccessToken":"token123","User":{"Id":"user42","Name":"Demo"},"ServerId":"srv"}
+                            """.trimIndent(),
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+
+            val api = JellyfinAuthApi(client, "https://demo.jellyfin.org")
+            val response =
+                api.authenticateByName(
+                    AuthenticateByNameRequest(
+                        username = "demo",
+                        password = "secret",
+                        deviceId = "device-1",
+                    ),
                 )
-            }
 
-        val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            assertEquals("token123", response.accessToken)
+            assertEquals("user42", response.user.id)
 
-        val api = JellyfinAuthApi(client, "https://demo.jellyfin.org")
-        val response =
-            api.authenticateByName(
-                AuthenticateByNameRequest(
-                    username = "demo",
-                    password = "secret",
-                    deviceId = "device-1",
-                ),
-            )
+            val request = recorded.single()
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/Users/AuthenticateByName", request.url.encodedPath)
+            val payload = request.bodyText()
+            assertTrue(payload.contains("\"Username\":\"demo\""))
+            assertTrue(payload.contains("\"Password\":\"secret\""))
 
-        assertEquals("token123", response.accessToken)
-        assertEquals("user42", response.user.id)
-
-        val request = recorded.single()
-        assertEquals(HttpMethod.Post, request.method)
-        assertEquals("/Users/AuthenticateByName", request.url.encodedPath)
-        val payload = request.bodyText()
-        assertTrue(payload.contains("\"Username\":\"demo\""))
-        assertTrue(payload.contains("\"Password\":\"secret\""))
-
-        client.close()
-    }
+            client.close()
+        }
 
     @Test
-    fun sonarrStatusAddsApiKeyHeader() = runTest {
-        val recorded = mutableListOf<HttpRequestData>()
-        val engine =
-            MockEngine { request ->
-                recorded += request
-                respond(
-                    content =
-                        """{"appName":"Sonarr","version":"3.0.0"}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-                )
-            }
+    fun sonarrStatusAddsApiKeyHeader() =
+        runTest {
+            val recorded = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    recorded += request
+                    respond(
+                        content =
+                            """{"appName":"Sonarr","version":"3.0.0"}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
 
-        val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
-        val api = SonarrSystemApi(client, "https://sonarr.local", "key123")
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = SonarrSystemApi(client, "https://sonarr.local", "key123")
 
-        val result = api.fetchSystemStatus()
-        assertEquals("Sonarr", result.appName)
+            val result = api.fetchSystemStatus()
+            assertEquals("Sonarr", result.appName)
 
-        val request = recorded.single()
-        assertEquals(HttpMethod.Get, request.method)
-        assertEquals("/api/v3/system/status", request.url.encodedPath)
-        assertEquals("key123", request.headers["X-Api-Key"])
+            val request = recorded.single()
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v3/system/status", request.url.encodedPath)
+            assertEquals("key123", request.headers["X-Api-Key"])
 
-        client.close()
-    }
-
-    @Test
-    fun radarrStatusUsesSameContract() = runTest {
-        val recorded = mutableListOf<HttpRequestData>()
-        val engine =
-            MockEngine { request ->
-                recorded += request
-                respond(
-                    content =
-                        """{"appName":"Radarr","version":"5.0.0"}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-                )
-            }
-
-        val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
-        val api = RadarrSystemApi(client, "https://radarr.local", "secret")
-
-        val result = api.fetchSystemStatus()
-        assertEquals("Radarr", result.appName)
-
-        val request = recorded.single()
-        assertEquals("/api/v3/system/status", request.url.encodedPath)
-        assertEquals("secret", request.headers["X-Api-Key"])
-
-        client.close()
-    }
+            client.close()
+        }
 
     @Test
-    fun jellyseerrStatusHitsV1Endpoint() = runTest {
-        val recorded = mutableListOf<HttpRequestData>()
-        val engine =
-            MockEngine { request ->
-                recorded += request
-                respond(
-                    content =
-                        """{"version":"1.8.0","commitTag":"abcdef"}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
-                )
-            }
+    fun radarrStatusUsesSameContract() =
+        runTest {
+            val recorded = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    recorded += request
+                    respond(
+                        content =
+                            """{"appName":"Radarr","version":"5.0.0"}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
 
-        val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
-        val api = JellyseerrStatusApi(client, "https://requests.local", "api-key")
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = RadarrSystemApi(client, "https://radarr.local", "secret")
 
-        val result = api.fetchStatus()
-        assertEquals("1.8.0", result.version)
+            val result = api.fetchSystemStatus()
+            assertEquals("Radarr", result.appName)
 
-        val request = recorded.single()
-        assertEquals("/api/v1/status", request.url.encodedPath)
-        assertEquals("api-key", request.headers["X-Api-Key"])
+            val request = recorded.single()
+            assertEquals("/api/v3/system/status", request.url.encodedPath)
+            assertEquals("secret", request.headers["X-Api-Key"])
 
-        client.close()
-    }
+            client.close()
+        }
+
+    @Test
+    fun jellyseerrStatusHitsV1Endpoint() =
+        runTest {
+            val recorded = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    recorded += request
+                    respond(
+                        content =
+                            """{"version":"1.8.0","commitTag":"abcdef"}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyseerrStatusApi(client, "https://requests.local", "api-key")
+
+            val result = api.fetchStatus()
+            assertEquals("1.8.0", result.version)
+
+            val request = recorded.single()
+            assertEquals("/api/v1/status", request.url.encodedPath)
+            assertEquals("api-key", request.headers["X-Api-Key"])
+
+            client.close()
+        }
 }
 
-private fun HttpRequestData.bodyText(): String {
-    return when (val content = body) {
+private fun HttpRequestData.bodyText(): String =
+    when (val content = body) {
         is TextContent -> content.text
         is ByteArrayContent -> content.bytes().decodeToString()
         else -> ""
     }
-}
