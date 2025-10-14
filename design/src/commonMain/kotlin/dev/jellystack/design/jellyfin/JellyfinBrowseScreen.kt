@@ -143,7 +143,6 @@ fun JellyfinBrowseScreen(
                         onOpenSeries = { series ->
                             onOpenDetail(series)
                         },
-                        onOpenEpisode = onOpenDetail,
                     )
                 }
             } else {
@@ -511,14 +510,13 @@ private fun TvSeriesCard(
     baseUrl: String?,
     accessToken: String?,
     onOpenSeries: (JellyfinItem) -> Unit,
-    onOpenEpisode: (JellyfinItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember(group.id) { mutableStateOf(false) }
-
     Card(
         modifier = modifier.fillMaxWidth(),
-        onClick = { expanded = !expanded },
+        onClick = {
+            group.openItem?.let(onOpenSeries)
+        },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Column(
@@ -575,44 +573,9 @@ private fun TvSeriesCard(
                         Text(
                             text = overview,
                             style = MaterialTheme.typography.bodyMedium,
-                            maxLines = if (expanded) 6 else 3,
+                            maxLines = 3,
                             overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                    group.openItem?.let { seriesItem ->
-                        TextButton(onClick = { onOpenSeries(seriesItem) }) {
-                            Text("View series")
-                        }
-                    }
-                }
-            }
-            if (group.episodes.isNotEmpty()) {
-                if (expanded) {
-                    val seasonGroups = buildSeasonEpisodes(group.episodes)
-                    Column(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        seasonGroups.forEach { season ->
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = season.label,
-                                    style = MaterialTheme.typography.titleSmall,
-                                )
-                                season.episodes.forEach { episode ->
-                                    TextButton(onClick = { onOpenEpisode(episode) }) {
-                                        Text(
-                                            text = episodeLabel(episode),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
