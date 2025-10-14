@@ -12,6 +12,11 @@ CREATE TABLE jellyfin_items (
     primary_image_tag TEXT,
     thumb_image_tag TEXT,
     backdrop_image_tag TEXT,
+    series_id TEXT,
+    series_primary_image_tag TEXT,
+    series_thumb_image_tag TEXT,
+    series_backdrop_image_tag TEXT,
+    parent_logo_image_tag TEXT,
     run_time_ticks INTEGER,
     position_ticks INTEGER,
     played_percentage REAL,
@@ -62,6 +67,11 @@ INSERT OR REPLACE INTO jellyfin_items (
     primary_image_tag,
     thumb_image_tag,
     backdrop_image_tag,
+    series_id,
+    series_primary_image_tag,
+    series_thumb_image_tag,
+    series_backdrop_image_tag,
+    parent_logo_image_tag,
     run_time_ticks,
     position_ticks,
     played_percentage,
@@ -78,7 +88,7 @@ INSERT OR REPLACE INTO jellyfin_items (
     updated_at
 )
 VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 );
 
 deleteByServerAndLibrary:

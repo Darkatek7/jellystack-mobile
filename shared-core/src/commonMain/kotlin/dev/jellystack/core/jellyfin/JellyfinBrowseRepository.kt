@@ -175,6 +175,17 @@ private fun JellyfinItemDto.toRecord(
         primaryImageTag = imageTags?.get("Primary"),
         thumbImageTag = imageTags?.get("Thumb"),
         backdropImageTag = backdropImageTags?.firstOrNull() ?: parentBackdropImageTags?.firstOrNull(),
+        seriesId = seriesId ?: parentId,
+        seriesPrimaryImageTag =
+            seriesPrimaryImageTag
+                ?: imageTags?.get("Primary")?.takeIf { type.equals("Series", ignoreCase = true) },
+        seriesThumbImageTag =
+            seriesThumbImageTag
+                ?: imageTags?.get("Thumb")?.takeIf { type.equals("Series", ignoreCase = true) },
+        seriesBackdropImageTag =
+            seriesBackdropImageTag
+                ?: parentBackdropImageTags?.firstOrNull(),
+        parentLogoImageTag = parentLogoImageTag ?: imageTags?.get("Logo"),
         runTimeTicks = runTimeTicks,
         positionTicks = userData?.playbackPositionTicks,
         playedPercentage = userData?.playedPercentage,
@@ -205,6 +216,11 @@ private fun JellyfinItemRecord.toDomain(): JellyfinItem =
         primaryImageTag = primaryImageTag,
         thumbImageTag = thumbImageTag,
         backdropImageTag = backdropImageTag,
+        seriesId = seriesId,
+        seriesPrimaryImageTag = seriesPrimaryImageTag,
+        seriesThumbImageTag = seriesThumbImageTag,
+        seriesBackdropImageTag = seriesBackdropImageTag,
+        parentLogoImageTag = parentLogoImageTag,
         runTimeTicks = runTimeTicks,
         positionTicks = positionTicks,
         playedPercentage = playedPercentage,

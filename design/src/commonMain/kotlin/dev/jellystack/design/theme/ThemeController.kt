@@ -7,12 +7,21 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class ThemeController(
     initialIsDark: Boolean,
+    private val onThemeChanged: ((Boolean) -> Unit)? = null,
 ) {
     private val _isDark = MutableStateFlow(initialIsDark)
     val isDark: StateFlow<Boolean> = _isDark.asStateFlow()
 
     fun toggle() {
-        _isDark.value = !_isDark.value
+        set(!_isDark.value)
+    }
+
+    fun set(isDark: Boolean) {
+        if (_isDark.value == isDark) {
+            return
+        }
+        _isDark.value = isDark
+        onThemeChanged?.invoke(isDark)
     }
 }
 

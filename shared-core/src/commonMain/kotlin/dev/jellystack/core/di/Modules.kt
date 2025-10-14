@@ -6,6 +6,7 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.ServerRepositoryEnvironmentProvider
 import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
+import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.security.SecureStore
 import dev.jellystack.core.security.SecureStoreFactory
 import dev.jellystack.core.security.SecureStoreFactory.Companion.DEFAULT_SECURE_STORE_NAME
@@ -41,6 +42,7 @@ fun coreModule(): Module =
         single<JellyfinEnvironmentProvider> { ServerRepositoryEnvironmentProvider(get()) }
         single<JellyfinBrowseApiFactory> { defaultJellyfinBrowseApiFactory() }
         single { JellyfinBrowseRepository(get(), get(), get(), get(), get()) }
+        single { ThemePreferenceRepository(get()) }
     }
 
 expect fun platformModule(): Module

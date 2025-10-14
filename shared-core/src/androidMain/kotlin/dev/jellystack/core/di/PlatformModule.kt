@@ -1,6 +1,8 @@
 package dev.jellystack.core.di
 
 import android.content.Context
+import com.russhwolf.settings.Settings
+import com.russhwolf.settings.SharedPreferencesSettings
 import dev.jellystack.core.security.SecureStoreEngineFactory
 import dev.jellystack.core.security.android.AndroidSecureStoreEngine
 import dev.jellystack.core.security.android.PlaintextSecureStoreEngine
@@ -12,6 +14,11 @@ actual fun platformModule() =
     module {
         single<SecureStoreEngineFactory> {
             AndroidSecureStoreEngineFactory(androidContext())
+        }
+        single<Settings> {
+            val context = androidContext()
+            val preferences = context.getSharedPreferences("jellystack_prefs", Context.MODE_PRIVATE)
+            SharedPreferencesSettings(preferences)
         }
     }
 

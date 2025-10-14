@@ -85,7 +85,7 @@ class JellyfinBrowseApi(
                 parameter("SortOrder", "Ascending")
                 parameter("Fields", REQUIRED_FIELDS)
                 parameter("ImageTypeLimit", 1)
-                parameter("EnableImageTypes", "Primary,Backdrop,Thumb")
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
             }.body()
 
     suspend fun fetchContinueWatching(
@@ -99,7 +99,7 @@ class JellyfinBrowseApi(
                 parameter("Limit", limit)
                 parameter("Fields", REQUIRED_FIELDS)
                 parameter("ImageTypeLimit", 1)
-                parameter("EnableImageTypes", "Primary,Backdrop,Thumb")
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
             }.body()
 
     suspend fun fetchItemDetail(
@@ -111,7 +111,7 @@ class JellyfinBrowseApi(
                 method = HttpMethod.Get
                 configure("/Users/$userId/Items/$itemId")
                 parameter("Fields", DETAIL_FIELDS)
-                parameter("EnableImageTypes", "Primary,Backdrop,Thumb")
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
                 parameter("ImageTypeLimit", 1)
             }.body()
 
@@ -119,7 +119,7 @@ class JellyfinBrowseApi(
         private const val REQUIRED_FIELDS =
             "PrimaryImageAspectRatio,MediaSourceCount,BasicSyncInfo,CanDelete,Genres," +
                 "SeasonUserData,ChildCount,SeriesInfo,CollectionType,Overview,Taglines,Studios," +
-                "PremiereDate,ProductionYear,ProviderIds"
+                "PremiereDate,ProductionYear,ProviderIds,ParentLogoImageTag"
         private const val DETAIL_FIELDS =
             REQUIRED_FIELDS +
                 ",MediaStreams,SeasonUserData,ParentBackdropImageTags,ParentLogoImageTags," +
@@ -199,6 +199,14 @@ data class JellyfinItemDto(
     val backdropImageTags: List<String>? = null,
     @SerialName("ParentBackdropImageTags")
     val parentBackdropImageTags: List<String>? = null,
+    @SerialName("SeriesPrimaryImageTag")
+    val seriesPrimaryImageTag: String? = null,
+    @SerialName("SeriesThumbImageTag")
+    val seriesThumbImageTag: String? = null,
+    @SerialName("SeriesBackdropImageTag")
+    val seriesBackdropImageTag: String? = null,
+    @SerialName("ParentLogoImageTag")
+    val parentLogoImageTag: String? = null,
     @SerialName("UserData")
     val userData: JellyfinItemUserData? = null,
     @SerialName("SeriesId")

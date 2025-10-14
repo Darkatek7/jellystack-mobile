@@ -32,6 +32,7 @@ kotlin {
                 implementation(libs.ktor.serialization.kotlinx.json)
                 implementation(libs.ktor.http)
                 implementation(libs.koin.core)
+                implementation(libs.multiplatform.settings)
             }
         }
         val commonTest by getting {

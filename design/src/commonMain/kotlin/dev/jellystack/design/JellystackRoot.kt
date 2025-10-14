@@ -68,6 +68,7 @@ import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.logging.JellystackLog
+import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.server.ConnectivityException
 import dev.jellystack.core.server.CredentialInput
 import dev.jellystack.core.server.ManagedServer
@@ -76,6 +77,7 @@ import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailContent
+import dev.jellystack.design.jellyfin.buildSeasonEpisodes
 import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
 import dev.jellystack.design.theme.ThemeController
@@ -157,7 +159,13 @@ fun JellystackRoot(
         return
     }
 
-    val themeController = remember { ThemeController(defaultDarkTheme) }
+    val koin = remember { JellystackDI.koin }
+    val themePreferences = remember(koin) { koin.get<ThemePreferenceRepository>() }
+    val themeController =
+        remember(themePreferences, defaultDarkTheme) {
+            val initialTheme = themePreferences.currentTheme() ?: defaultDarkTheme
+            ThemeController(initialTheme, onThemeChanged = themePreferences::setDarkTheme)
+        }
     val isDarkTheme by themeController.isDark.collectAsState()
     val playbackState by controller.state.collectAsState()
     val playbackDescription =
@@ -170,7 +178,6 @@ fun JellystackRoot(
     var detailJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
-    val koin = remember { JellystackDI.koin }
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
     val serverRepository = remember { koin.get<ServerRepository>() }
     val managedServers by serverRepository.observeServers().collectAsState()
@@ -412,7 +419,6 @@ fun JellystackRoot(
                     when (currentScreen) {
                         JellystackScreen.Home ->
                             HomeContent(
-                                playbackStatus = playbackDescription,
                                 browseState = browseState,
                                 onSelectLibrary = onSelectLibrary,
                                 onRefreshLibraries = onRefreshLibraries,
@@ -428,6 +434,7 @@ fun JellystackRoot(
                         JellystackScreen.Detail ->
                             DetailContent(
                                 state = detailState,
+                                libraryItems = browseState.libraryItems,
                                 onRetry = onRetryDetail,
                                 onPlay = playbackAction,
                                 modifier = Modifier.padding(padding),
@@ -537,7 +544,6 @@ private fun JellystackPreviewRoot(
                     when (currentScreen) {
                         JellystackScreen.Home ->
                             HomeContent(
-                                playbackStatus = playbackDescription,
                                 browseState = browseState,
                                 onSelectLibrary = {},
                                 onRefreshLibraries = {},
@@ -553,6 +559,7 @@ private fun JellystackPreviewRoot(
                         JellystackScreen.Detail ->
                             DetailContent(
                                 state = detailState,
+                                libraryItems = browseState.libraryItems,
                                 onRetry = {},
                                 onPlay = {},
                                 modifier = Modifier.padding(padding),
@@ -582,7 +589,6 @@ private fun JellystackPreviewRoot(
 @Suppress("FunctionName")
 @Composable
 private fun HomeContent(
-    playbackStatus: String,
     browseState: JellyfinHomeState,
     onSelectLibrary: (String) -> Unit,
     onRefreshLibraries: () -> Unit,
@@ -598,12 +604,6 @@ private fun HomeContent(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AssistChip(
-            onClick = {},
-            enabled = false,
-            label = { Text("Playback: $playbackStatus") },
-            modifier = Modifier.align(Alignment.End),
-        )
         JellyfinBrowseScreen(
             state = browseState,
             onSelectLibrary = onSelectLibrary,
@@ -620,6 +620,7 @@ private fun HomeContent(
 @Composable
 private fun DetailContent(
     state: JellyfinDetailUiState,
+    libraryItems: List<JellyfinItem>,
     onRetry: () -> Unit,
     onPlay: (JellyfinItemDetail) -> Unit,
     modifier: Modifier = Modifier,
@@ -662,16 +663,52 @@ private fun DetailContent(
                 }
             }
 
-        is JellyfinDetailUiState.Loaded ->
+        is JellyfinDetailUiState.Loaded -> {
+            val episodes = remember(state.detail.id, libraryItems) { findEpisodesForDetail(state, libraryItems) }
+            val seasonGroups = remember(episodes) { buildSeasonEpisodes(episodes) }
             JellyfinDetailContent(
                 detail = state.detail,
                 baseUrl = state.imageBaseUrl,
                 accessToken = state.imageAccessToken,
+                seasons = seasonGroups,
                 onPlay = { onPlay(state.detail) },
                 onQueueDownload = {},
                 modifier = modifier.fillMaxSize(),
             )
+        }
     }
+}
+
+private fun findEpisodesForDetail(
+    state: JellyfinDetailUiState.Loaded,
+    libraryItems: List<JellyfinItem>,
+): List<JellyfinItem> {
+    val targetNames =
+        buildSet {
+            add(state.detail.name.lowercase())
+            add(state.item.name.lowercase())
+            state.item.seriesName
+                ?.lowercase()
+                ?.let { add(it) }
+        }
+    val targetIds =
+        buildSet {
+            if (state.item.type.equals("Series", ignoreCase = true)) {
+                add(state.item.id)
+            }
+            state.item.parentId?.let { add(it) }
+            state.item.seasonId?.let { add(it) }
+        }
+    return libraryItems
+        .asSequence()
+        .filter { it.type.equals("Episode", ignoreCase = true) }
+        .filter { episode ->
+            val matchesName = episode.seriesName?.lowercase()?.let { it in targetNames } ?: false
+            val matchesId =
+                episode.parentId?.let { it in targetIds } == true ||
+                    episode.seasonId?.let { it in targetIds } == true
+            matchesName || matchesId
+        }.toList()
 }
 
 @Suppress("FunctionName")

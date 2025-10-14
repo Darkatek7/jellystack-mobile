@@ -277,18 +277,31 @@ private fun ContinueWatchingCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Box {
+            val seriesItemId = item.seriesId ?: item.parentId
+            val fallbackCandidates =
+                buildList<ImageCandidate> {
+                    addCandidate(item.id, item.primaryImageTag, "Primary")
+                    addCandidate(item.id, item.thumbImageTag, "Thumb")
+                    addCandidate(item.id, item.backdropImageTag, "Backdrop")
+                }
             PosterImage(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(2f / 3f),
                 baseUrl = baseUrl,
-                itemId = item.id,
-                primaryTag = item.primaryImageTag,
-                thumbTag = item.thumbImageTag,
-                backdropTag = item.backdropImageTag,
+                itemId = seriesItemId ?: item.id,
+                primaryTag = item.seriesPrimaryImageTag ?: item.primaryImageTag,
+                thumbTag = item.seriesThumbImageTag ?: item.thumbImageTag,
+                backdropTag = item.seriesBackdropImageTag ?: item.backdropImageTag,
                 accessToken = accessToken,
                 contentDescription = item.name,
+                primaryImageItemId = seriesItemId,
+                thumbImageItemId = seriesItemId,
+                backdropImageItemId = seriesItemId,
+                logoImageItemId = seriesItemId,
+                logoTag = item.parentLogoImageTag,
+                extraCandidates = fallbackCandidates,
             )
             val progress = progressFraction(item)
             if (progress > 0f) {
@@ -341,13 +354,29 @@ private data class TvSeriesGroup(
     val overview: String?
         get() = series?.overview ?: fallbackEpisode?.overview
     val posterItemId: String
-        get() = series?.id ?: fallbackEpisode?.id ?: id
+        get() = primaryImageItemId ?: series?.id ?: fallbackEpisode?.id ?: id
     val primaryImageTag: String?
-        get() = series?.primaryImageTag ?: fallbackEpisode?.primaryImageTag
+        get() =
+            series?.primaryImageTag
+                ?: series?.seriesPrimaryImageTag
+                ?: fallbackEpisode?.seriesPrimaryImageTag
+                ?: fallbackEpisode?.primaryImageTag
     val thumbTag: String?
-        get() = series?.thumbImageTag ?: fallbackEpisode?.thumbImageTag
+        get() =
+            series?.thumbImageTag
+                ?: series?.seriesThumbImageTag
+                ?: fallbackEpisode?.seriesThumbImageTag
+                ?: fallbackEpisode?.thumbImageTag
     val backdropTag: String?
-        get() = series?.backdropImageTag ?: fallbackEpisode?.backdropImageTag
+        get() =
+            series?.backdropImageTag
+                ?: series?.seriesBackdropImageTag
+                ?: fallbackEpisode?.seriesBackdropImageTag
+                ?: fallbackEpisode?.backdropImageTag
+    val primaryImageItemId: String?
+        get() = series?.id ?: fallbackEpisode?.seriesId ?: fallbackEpisode?.parentId
+    val logoTag: String?
+        get() = series?.parentLogoImageTag ?: fallbackEpisode?.parentLogoImageTag
     val openItem: JellyfinItem?
         get() = series ?: fallbackEpisode
 }
@@ -383,6 +412,9 @@ private fun groupTvSeries(items: List<JellyfinItem>): List<TvSeriesGroup> {
                     ?: "episode:${episode.id}"
             val group = ensureGroup(key)
             group.episodes += episode
+            if (group.series == null) {
+                group.series = episode.toSeriesPlaceholder()
+            }
             if (normalizedName != null && nameToKey[normalizedName] == null) {
                 nameToKey[normalizedName] = key
             }
@@ -442,6 +474,37 @@ private data class MutableTvSeriesGroup(
         )
 }
 
+internal data class SeasonEpisodes(
+    val seasonNumber: Int?,
+    val label: String,
+    val episodes: List<JellyfinItem>,
+    val sortKey: Int,
+)
+
+internal fun buildSeasonEpisodes(episodes: List<JellyfinItem>): List<SeasonEpisodes> =
+    episodes
+        .groupBy { it.parentIndexNumber }
+        .map { (seasonNumber, episodesInSeason) ->
+            val label =
+                when {
+                    seasonNumber == null -> "Episodes"
+                    seasonNumber <= 0 -> "Specials"
+                    else -> "Season $seasonNumber"
+                }
+            val sortedEpisodes =
+                episodesInSeason.sortedWith(
+                    compareBy<JellyfinItem> { it.parentIndexNumber ?: Int.MAX_VALUE }
+                        .thenBy { it.indexNumber ?: Int.MAX_VALUE }
+                        .thenBy { it.name },
+                )
+            SeasonEpisodes(
+                seasonNumber = seasonNumber,
+                label = label,
+                episodes = sortedEpisodes,
+                sortKey = seasonNumber ?: Int.MAX_VALUE,
+            )
+        }.sortedWith(compareBy<SeasonEpisodes> { it.sortKey }.thenBy { it.label })
+
 @Composable
 private fun TvSeriesCard(
     group: TvSeriesGroup,
@@ -468,6 +531,14 @@ private fun TvSeriesCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                val fallbackCandidates =
+                    buildList<ImageCandidate> {
+                        val episode = group.fallbackEpisode
+                        addCandidate(episode?.id, episode?.primaryImageTag, "Primary")
+                        addCandidate(episode?.id, episode?.thumbImageTag, "Thumb")
+                        addCandidate(episode?.id, episode?.backdropImageTag, "Backdrop")
+                    }
+                val seriesItemId = group.primaryImageItemId
                 PosterImage(
                     modifier =
                         Modifier
@@ -480,6 +551,12 @@ private fun TvSeriesCard(
                     backdropTag = group.backdropTag,
                     accessToken = accessToken,
                     contentDescription = group.title,
+                    primaryImageItemId = seriesItemId,
+                    thumbImageItemId = seriesItemId,
+                    backdropImageItemId = seriesItemId,
+                    logoImageItemId = seriesItemId,
+                    logoTag = group.logoTag,
+                    extraCandidates = fallbackCandidates,
                 )
                 Column(
                     modifier =
@@ -510,12 +587,8 @@ private fun TvSeriesCard(
                 }
             }
             if (group.episodes.isNotEmpty()) {
-                Text(
-                    text = if (expanded) "Tap card to hide episodes" else "Tap card to view episodes",
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
                 if (expanded) {
+                    val seasonGroups = buildSeasonEpisodes(group.episodes)
                     Column(
                         modifier =
                             Modifier
@@ -523,23 +596,21 @@ private fun TvSeriesCard(
                                 .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            text = "Episodes",
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        val sortedEpisodes =
-                            group.episodes.sortedWith(
-                                compareBy<JellyfinItem> { it.parentIndexNumber ?: Int.MAX_VALUE }
-                                    .thenBy { it.indexNumber ?: Int.MAX_VALUE }
-                                    .thenBy { it.name },
-                            )
-                        sortedEpisodes.forEach { episode ->
-                            TextButton(onClick = { onOpenEpisode(episode) }) {
+                        seasonGroups.forEach { season ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = episodeLabel(episode),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    text = season.label,
+                                    style = MaterialTheme.typography.titleSmall,
                                 )
+                                season.episodes.forEach { episode ->
+                                    TextButton(onClick = { onOpenEpisode(episode) }) {
+                                        Text(
+                                            text = episodeLabel(episode),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -636,6 +707,13 @@ private fun PosterImage(
     backdropTag: String?,
     accessToken: String?,
     contentDescription: String,
+    primaryImageItemId: String? = null,
+    thumbImageItemId: String? = null,
+    backdropImageItemId: String? = null,
+    logoImageItemId: String? = null,
+    logoTag: String? = null,
+    preferLogo: Boolean = false,
+    extraCandidates: List<ImageCandidate> = emptyList(),
 ) {
     val shape = MaterialTheme.shapes.medium
     val fallbackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -649,10 +727,35 @@ private fun PosterImage(
                 ?.toString()
         }
     val imageUrl =
-        remember(baseUrl, accessToken, itemId, primaryTag, thumbTag, backdropTag) {
-            buildImageUrl(baseUrl, itemId, primaryTag, "Primary", accessToken)
-                ?: buildImageUrl(baseUrl, itemId, thumbTag, "Thumb", accessToken)
-                ?: buildImageUrl(baseUrl, itemId, backdropTag, "Backdrop", accessToken)
+        remember(
+            baseUrl,
+            accessToken,
+            itemId,
+            primaryTag,
+            thumbTag,
+            backdropTag,
+            primaryImageItemId,
+            thumbImageItemId,
+            backdropImageItemId,
+            logoImageItemId,
+            logoTag,
+            preferLogo,
+            extraCandidates,
+        ) {
+            buildList {
+                if (preferLogo) {
+                    addCandidate(logoImageItemId, logoTag, "Logo")
+                }
+                addCandidate(primaryImageItemId ?: itemId, primaryTag, "Primary")
+                addCandidate(thumbImageItemId ?: itemId, thumbTag, "Thumb")
+                addCandidate(backdropImageItemId ?: itemId, backdropTag, "Backdrop")
+                addAll(extraCandidates)
+                if (!preferLogo) {
+                    addCandidate(logoImageItemId, logoTag, "Logo")
+                }
+            }.firstNotNullOfOrNull { candidate ->
+                buildImageUrl(baseUrl, candidate.itemId, candidate.tag, candidate.type, accessToken)
+            }
         }
     val context = LocalPlatformContext.current
     Box(
@@ -682,6 +785,41 @@ private fun PosterImage(
             )
         }
     }
+}
+
+private data class ImageCandidate(
+    val itemId: String,
+    val tag: String,
+    val type: String,
+)
+
+private fun MutableList<ImageCandidate>.addCandidate(
+    itemId: String?,
+    tag: String?,
+    type: String,
+) {
+    if (!itemId.isNullOrBlank() && !tag.isNullOrBlank()) {
+        add(ImageCandidate(itemId = itemId, tag = tag, type = type))
+    }
+}
+
+private fun JellyfinItem.toSeriesPlaceholder(): JellyfinItem {
+    val placeholderId = seriesId ?: parentId ?: id
+    return copy(
+        id = placeholderId,
+        type = "Series",
+        name = seriesName ?: name,
+        sortName = sortName ?: seriesName,
+        overview = null,
+        taglines = emptyList(),
+        primaryImageTag = seriesPrimaryImageTag ?: primaryImageTag,
+        thumbImageTag = seriesThumbImageTag ?: thumbImageTag,
+        backdropImageTag = seriesBackdropImageTag ?: backdropImageTag,
+        seriesId = placeholderId,
+        seriesPrimaryImageTag = seriesPrimaryImageTag ?: primaryImageTag,
+        seriesThumbImageTag = seriesThumbImageTag ?: thumbImageTag,
+        seriesBackdropImageTag = seriesBackdropImageTag ?: backdropImageTag,
+    )
 }
 
 private fun buildImageUrl(
@@ -767,10 +905,11 @@ private fun LoadMoreListener(
 }
 
 @Composable
-fun JellyfinDetailContent(
+internal fun JellyfinDetailContent(
     detail: JellyfinItemDetail,
     baseUrl: String?,
     accessToken: String?,
+    seasons: List<SeasonEpisodes>,
     onPlay: () -> Unit,
     onQueueDownload: () -> Unit,
     modifier: Modifier = Modifier,
@@ -820,6 +959,28 @@ fun JellyfinDetailContent(
                 text = detail.overview!!,
                 style = MaterialTheme.typography.bodyLarge,
             )
+        }
+        if (seasons.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Episodes",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                seasons.forEach { season ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = season.label,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        season.episodes.forEach { episode ->
+                            Text(
+                                text = episodeLabel(episode),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
+            }
         }
         if (detail.mediaSources.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
