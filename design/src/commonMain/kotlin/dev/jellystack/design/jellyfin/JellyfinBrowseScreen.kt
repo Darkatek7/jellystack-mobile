@@ -72,6 +72,7 @@ fun JellyfinBrowseScreen(
     onOpenDetail: (JellyfinItem) -> Unit,
     onConnectServer: () -> Unit,
     showLibrarySelector: Boolean = true,
+    showLibraryItems: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -144,11 +145,13 @@ fun JellyfinBrowseScreen(
                 .take(12)
                 .toList()
         }
-    LoadMoreListener(
-        listState = listState,
-        shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
-        onLoadMore = onLoadMore,
-    )
+    if (showLibraryItems) {
+        LoadMoreListener(
+            listState = listState,
+            shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
+            onLoadMore = onLoadMore,
+        )
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
@@ -209,47 +212,49 @@ fun JellyfinBrowseScreen(
                     onOpenItem = onOpenDetail,
                 )
             }
-            item(key = "spacerAfterRecent") {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            if (isTvLibrary) {
-                if (seriesGroups.isNotEmpty()) {
-                    item(key = "allSeriesHeader") {
-                        SectionHeader(title = "All Series")
+            if (showLibraryItems) {
+                item(key = "spacerAfterRecent") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                if (isTvLibrary) {
+                    if (seriesGroups.isNotEmpty()) {
+                        item(key = "allSeriesHeader") {
+                            SectionHeader(title = "All Series")
+                        }
+                    }
+                    items(
+                        items = seriesGroups,
+                        key = { it.id },
+                    ) { group ->
+                        TvSeriesCard(
+                            group = group,
+                            baseUrl = state.imageBaseUrl,
+                            accessToken = state.imageAccessToken,
+                            onOpenSeries = { series ->
+                                onOpenDetail(series)
+                            },
+                        )
+                    }
+                } else {
+                    if (state.libraryItems.isNotEmpty()) {
+                        item(key = "allItemsHeader") {
+                            SectionHeader(title = "All Items")
+                        }
+                    }
+                    items(
+                        items = state.libraryItems,
+                        key = { it.id },
+                    ) { item ->
+                        LibraryItemRow(
+                            item = item,
+                            baseUrl = state.imageBaseUrl,
+                            accessToken = state.imageAccessToken,
+                            onClick = { onOpenDetail(item) },
+                        )
                     }
                 }
-                items(
-                    items = seriesGroups,
-                    key = { it.id },
-                ) { group ->
-                    TvSeriesCard(
-                        group = group,
-                        baseUrl = state.imageBaseUrl,
-                        accessToken = state.imageAccessToken,
-                        onOpenSeries = { series ->
-                            onOpenDetail(series)
-                        },
-                    )
-                }
-            } else {
-                if (state.libraryItems.isNotEmpty()) {
-                    item(key = "allItemsHeader") {
-                        SectionHeader(title = "All Items")
-                    }
-                }
-                items(
-                    items = state.libraryItems,
-                    key = { it.id },
-                ) { item ->
-                    LibraryItemRow(
-                        item = item,
-                        baseUrl = state.imageBaseUrl,
-                        accessToken = state.imageAccessToken,
-                        onClick = { onOpenDetail(item) },
-                    )
-                }
             }
-            if (state.isPageLoading) {
+            if (showLibraryItems && state.isPageLoading) {
                 item(key = "pagingLoader") {
                     Row(
                         modifier =
@@ -484,7 +489,7 @@ private fun NextUpCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.width(140.dp),
+        modifier = modifier.width(148.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
@@ -517,12 +522,14 @@ private fun NextUpCard(
                 text = item.seriesName ?: item.name,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = episodeLabel(item),
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -566,8 +573,18 @@ private fun SeriesPosterCard(
     modifier: Modifier = Modifier,
 ) {
     val targetItem = group.openItem
+    val extraCandidates =
+        remember(group) {
+            buildList<ImageCandidate> {
+                group.episodes.forEach { episode ->
+                    addCandidate(episode.id, episode.primaryImageTag, "Primary")
+                    addCandidate(episode.id, episode.thumbImageTag, "Thumb")
+                    addCandidate(episode.id, episode.backdropImageTag, "Backdrop")
+                }
+            }
+        }
     Card(
-        modifier = modifier.width(140.dp),
+        modifier = modifier.width(148.dp),
         onClick = { targetItem?.let(onOpenSeries) },
         enabled = targetItem != null,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -589,7 +606,7 @@ private fun SeriesPosterCard(
             backdropImageItemId = group.primaryImageItemId,
             logoImageItemId = group.primaryImageItemId,
             logoTag = group.logoTag,
-            preferLogo = true,
+            extraCandidates = extraCandidates,
         )
         Column(
             modifier =
@@ -602,16 +619,17 @@ private fun SeriesPosterCard(
                 text = group.title,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            group.overview?.takeIf { it.isNotBlank() }?.let { overview ->
-                Text(
-                    text = overview,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            val overview = group.overview?.takeIf { it.isNotBlank() } ?: " "
+            Text(
+                text = overview,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                minLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -653,7 +671,7 @@ private fun MoviePosterCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.width(140.dp),
+        modifier = modifier.width(148.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
@@ -681,6 +699,7 @@ private fun MoviePosterCard(
                 text = item.name,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val details =
@@ -688,14 +707,14 @@ private fun MoviePosterCard(
                     item.productionYear?.toString(),
                     item.officialRating,
                 ).joinToString(" • ")
-            if (details.isNotBlank()) {
-                Text(
-                    text = details,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            val detailsText = details.takeIf { it.isNotBlank() } ?: " "
+            Text(
+                text = detailsText,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                minLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

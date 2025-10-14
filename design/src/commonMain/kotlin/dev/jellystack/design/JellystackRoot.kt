@@ -471,6 +471,7 @@ fun JellystackRoot(
                                             isSettingsOpen = true
                                             openAddServerDialog()
                                         },
+                                        showLibrarySelector = true,
                                         modifier = Modifier.padding(padding),
                                     )
 
@@ -635,6 +636,7 @@ private fun JellystackPreviewRoot(
                                             currentScreen = JellystackScreen.Detail
                                         },
                                         onAddServer = { isSettingsOpen = true },
+                                        showLibrarySelector = true,
                                         modifier = Modifier.padding(padding),
                                     )
 
@@ -686,6 +688,8 @@ private fun LibraryContent(
     onLoadMore: () -> Unit,
     onOpenItemDetail: (JellyfinItem) -> Unit,
     onAddServer: () -> Unit,
+    showLibraryItems: Boolean = true,
+    showLibrarySelector: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -702,7 +706,8 @@ private fun LibraryContent(
             onLoadMore = onLoadMore,
             onOpenDetail = onOpenItemDetail,
             onConnectServer = onAddServer,
-            showLibrarySelector = false,
+            showLibrarySelector = showLibrarySelector,
+            showLibraryItems = showLibraryItems,
             modifier = Modifier.weight(1f, fill = true),
         )
     }
@@ -726,6 +731,7 @@ private fun HomeContent(
         onLoadMore = onLoadMore,
         onOpenItemDetail = onOpenItemDetail,
         onAddServer = onAddServer,
+        showLibraryItems = false,
         modifier = modifier,
     )
 }

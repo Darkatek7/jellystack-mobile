@@ -83,12 +83,14 @@ class JellyfinBrowseCoordinator(
                                 val firstPageResult = firstPageDeferred?.await() ?: emptyList()
                                 continueWatchingResult to firstPageResult
                             }
+                        val showsLibraryId = preferredLibraryId(libraries, "tvshows", "series") ?: selectedId
+                        val moviesLibraryId = preferredLibraryId(libraries, "movies") ?: selectedId
                         val recentShows =
-                            selectedId?.let { id ->
+                            showsLibraryId?.let { id ->
                                 repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
                             } ?: emptyList()
                         val recentMovies =
-                            selectedId?.let { id ->
+                            moviesLibraryId?.let { id ->
                                 repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
                             } ?: emptyList()
 
@@ -181,15 +183,21 @@ class JellyfinBrowseCoordinator(
                 )
             try {
                 val items = repository.loadLibraryPage(selectedId, page = page, pageSize = pageSize, refresh = refresh)
+                val showsLibraryId = preferredLibraryId(stateBefore.libraries, "tvshows", "series") ?: selectedId
+                val moviesLibraryId = preferredLibraryId(stateBefore.libraries, "movies") ?: selectedId
                 val recentShows =
                     if (page == 0 && (refresh || stateBefore.recentShows.isEmpty())) {
-                        repository.refreshRecentlyAddedShows(selectedId, limit = HOME_SECTION_ITEM_LIMIT)
+                        showsLibraryId?.let { id ->
+                            repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
+                        }
                     } else {
                         null
                     }
                 val recentMovies =
                     if (page == 0 && (refresh || stateBefore.recentMovies.isEmpty())) {
-                        repository.refreshRecentlyAddedMovies(selectedId, limit = HOME_SECTION_ITEM_LIMIT)
+                        moviesLibraryId?.let { id ->
+                            repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
+                        }
                     } else {
                         null
                     }
@@ -222,6 +230,18 @@ class JellyfinBrowseCoordinator(
                     )
             }
         }
+    }
+
+    private fun preferredLibraryId(
+        libraries: List<JellyfinLibrary>,
+        vararg collectionTypes: String,
+    ): String? {
+        if (libraries.isEmpty()) return null
+        val desiredTypes = collectionTypes.map { it.lowercase() }.toSet()
+        return libraries
+            .firstOrNull { library ->
+                library.collectionType?.lowercase()?.let(desiredTypes::contains) == true
+            }?.id
     }
 
     private fun selectDefaultLibrary(libraries: List<JellyfinLibrary>): String? =
