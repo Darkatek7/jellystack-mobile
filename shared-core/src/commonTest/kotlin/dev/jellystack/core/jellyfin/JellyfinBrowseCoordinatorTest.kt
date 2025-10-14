@@ -35,6 +35,12 @@ class JellyfinBrowseCoordinatorTest {
                 when {
                     path.endsWith("/Views") -> LIBRARIES_JSON
                     path.endsWith("/Items/Resume") -> RESUME_JSON
+                    path.endsWith("/Items/Latest") ->
+                        when (request.url.parameters["includeItemTypes"]) {
+                            "Series,Episode" -> LATEST_SHOWS_JSON
+                            "Movie" -> LATEST_MOVIES_JSON
+                            else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
+                        }
                     path.endsWith("/Items") -> {
                         val response =
                             when (itemPageCallCount++) {
@@ -246,6 +252,18 @@ class JellyfinBrowseCoordinatorTest {
                   "ImageTags": {"Primary": "tag-third"}
                 }
               ]
+            }
+        """
+
+        private const val LATEST_SHOWS_JSON = """
+            {
+              "Items": []
+            }
+        """
+
+        private const val LATEST_MOVIES_JSON = """
+            {
+              "Items": []
             }
         """
     }
