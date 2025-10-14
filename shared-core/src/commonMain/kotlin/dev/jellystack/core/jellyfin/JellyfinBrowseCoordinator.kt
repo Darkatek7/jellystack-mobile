@@ -16,6 +16,8 @@ data class JellyfinHomeState(
     val isPageLoading: Boolean = false,
     val libraries: List<JellyfinLibrary> = emptyList(),
     val continueWatching: List<JellyfinItem> = emptyList(),
+    val recentShows: List<JellyfinItem> = emptyList(),
+    val recentMovies: List<JellyfinItem> = emptyList(),
     val selectedLibraryId: String? = null,
     val libraryItems: List<JellyfinItem> = emptyList(),
     val currentPage: Int = 0,
@@ -30,6 +32,10 @@ class JellyfinBrowseCoordinator(
     private val scope: CoroutineScope,
     private val pageSize: Int = 30,
 ) {
+    private companion object {
+        private const val HOME_SECTION_ITEM_LIMIT = 12
+    }
+
     private val mutableState = MutableStateFlow(JellyfinHomeState(isInitialLoading = true))
     private val loadMutex = Mutex()
     private var refreshJob: Job? = null
@@ -60,7 +66,7 @@ class JellyfinBrowseCoordinator(
 
                         val (continueWatching, firstPage) =
                             coroutineScope {
-                                val continueWatchingDeferred = async { repository.refreshContinueWatching(limit = 12) }
+                                val continueWatchingDeferred = async { repository.refreshContinueWatching(limit = HOME_SECTION_ITEM_LIMIT) }
                                 val firstPageDeferred =
                                     selectedId?.let { id ->
                                         async {
@@ -77,6 +83,14 @@ class JellyfinBrowseCoordinator(
                                 val firstPageResult = firstPageDeferred?.await() ?: emptyList()
                                 continueWatchingResult to firstPageResult
                             }
+                        val recentShows =
+                            selectedId?.let { id ->
+                                repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
+                            } ?: emptyList()
+                        val recentMovies =
+                            selectedId?.let { id ->
+                                repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
+                            } ?: emptyList()
 
                         mutableState.value =
                             mutableState.value.copy(
@@ -84,6 +98,8 @@ class JellyfinBrowseCoordinator(
                                 isPageLoading = false,
                                 libraries = libraries,
                                 continueWatching = continueWatching,
+                                recentShows = recentShows,
+                                recentMovies = recentMovies,
                                 selectedLibraryId = selectedId,
                                 libraryItems = firstPage,
                                 currentPage = 0,
@@ -119,6 +135,8 @@ class JellyfinBrowseCoordinator(
                         selectedLibraryId = libraryId,
                         libraryItems = emptyList(),
                         currentPage = 0,
+                        recentShows = emptyList(),
+                        recentMovies = emptyList(),
                         endReached = false,
                         isInitialLoading = true,
                         errorMessage = null,
@@ -163,6 +181,18 @@ class JellyfinBrowseCoordinator(
                 )
             try {
                 val items = repository.loadLibraryPage(selectedId, page = page, pageSize = pageSize, refresh = refresh)
+                val recentShows =
+                    if (page == 0 && (refresh || stateBefore.recentShows.isEmpty())) {
+                        repository.refreshRecentlyAddedShows(selectedId, limit = HOME_SECTION_ITEM_LIMIT)
+                    } else {
+                        null
+                    }
+                val recentMovies =
+                    if (page == 0 && (refresh || stateBefore.recentMovies.isEmpty())) {
+                        repository.refreshRecentlyAddedMovies(selectedId, limit = HOME_SECTION_ITEM_LIMIT)
+                    } else {
+                        null
+                    }
                 val merged =
                     if (page == 0) {
                         items
@@ -178,6 +208,8 @@ class JellyfinBrowseCoordinator(
                         endReached = items.size < pageSize,
                         imageBaseUrl = imageBaseUrl,
                         imageAccessToken = imageAccessToken,
+                        recentShows = recentShows ?: mutableState.value.recentShows,
+                        recentMovies = recentMovies ?: mutableState.value.recentMovies,
                     )
             } catch (t: Throwable) {
                 mutableState.value =

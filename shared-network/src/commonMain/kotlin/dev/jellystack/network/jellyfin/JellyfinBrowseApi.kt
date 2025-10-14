@@ -88,6 +88,24 @@ class JellyfinBrowseApi(
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
             }.body()
 
+    suspend fun fetchLatestItems(
+        userId: String,
+        libraryId: String,
+        limit: Int,
+        includeItemTypes: String,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Users/$userId/Items/Latest")
+                parameter("ParentId", libraryId)
+                parameter("Limit", limit)
+                parameter("IncludeItemTypes", includeItemTypes)
+                parameter("Fields", REQUIRED_FIELDS)
+                parameter("ImageTypeLimit", 1)
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
+            }.body()
+
     suspend fun fetchContinueWatching(
         userId: String,
         limit: Int,

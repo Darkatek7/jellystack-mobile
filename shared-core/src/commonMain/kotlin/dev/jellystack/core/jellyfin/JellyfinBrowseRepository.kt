@@ -87,6 +87,30 @@ class JellyfinBrowseRepository(
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
     }
 
+    suspend fun refreshRecentlyAddedShows(
+        libraryId: String,
+        limit: Int,
+    ): List<JellyfinItem> = refreshRecentlyAdded(libraryId = libraryId, limit = limit, includeItemTypes = "Series,Episode")
+
+    suspend fun refreshRecentlyAddedMovies(
+        libraryId: String,
+        limit: Int,
+    ): List<JellyfinItem> = refreshRecentlyAdded(libraryId = libraryId, limit = limit, includeItemTypes = "Movie")
+
+    private suspend fun refreshRecentlyAdded(
+        libraryId: String,
+        limit: Int,
+        includeItemTypes: String,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val api = apiFor(environment)
+        val now = clock.now()
+        val response = api.fetchLatestItems(environment.userId, libraryId, limit, includeItemTypes)
+        val records = response.items.map { it.toRecord(environment, fallbackLibraryId = libraryId, updatedAt = now) }
+        itemStore.upsert(records)
+        return records.map { it.toDomain() }
+    }
+
     suspend fun getItemDetail(
         itemId: String,
         forceRefresh: Boolean = false,

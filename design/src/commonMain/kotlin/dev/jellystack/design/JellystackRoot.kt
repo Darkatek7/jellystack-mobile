@@ -702,6 +702,7 @@ private fun LibraryContent(
             onLoadMore = onLoadMore,
             onOpenDetail = onOpenItemDetail,
             onConnectServer = onAddServer,
+            showLibrarySelector = false,
             modifier = Modifier.weight(1f, fill = true),
         )
     }

@@ -71,6 +71,7 @@ fun JellyfinBrowseScreen(
     onLoadMore: () -> Unit,
     onOpenDetail: (JellyfinItem) -> Unit,
     onConnectServer: () -> Unit,
+    showLibrarySelector: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -104,22 +105,37 @@ fun JellyfinBrowseScreen(
                 .take(12)
         }
     val recentShowGroups =
-        remember(seriesGroups, state.libraryItems) {
-            if (state.libraryItems.any { it.type.equals("Series", ignoreCase = true) }) {
-                state.libraryItems
-                    .asSequence()
-                    .filter { it.type.equals("Series", ignoreCase = true) }
-                    .map { item ->
-                        MutableTvSeriesGroup(key = "series:${item.id}", series = item).toImmutable()
-                    }.take(12)
-                    .toList()
+        remember(state.recentShows) {
+            if (state.recentShows.isEmpty()) {
+                emptyList()
             } else {
-                seriesGroups.take(12)
+                val groups = linkedMapOf<String, MutableTvSeriesGroup>()
+                state.recentShows.forEach { item ->
+                    when {
+                        item.type.equals("Series", ignoreCase = true) -> {
+                            val key = "series:${item.id}"
+                            val group = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
+                            group.series = item
+                        }
+                        item.type.equals("Episode", ignoreCase = true) -> {
+                            val key =
+                                item.seriesId?.let { seriesId -> "series:$seriesId" }
+                                    ?: item.parentId?.let { parentId -> "parent:$parentId" }
+                                    ?: "episode:${item.id}"
+                            val group = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
+                            group.episodes += item
+                            if (group.series == null) {
+                                group.series = item.toSeriesPlaceholder()
+                            }
+                        }
+                    }
+                }
+                groups.values.map { it.toImmutable() }.take(12)
             }
         }
     val recentMovieItems =
-        remember(state.libraryItems) {
-            state.libraryItems
+        remember(state.recentMovies) {
+            state.recentMovies
                 .asSequence()
                 .filter { item ->
                     item.type.equals("Movie", ignoreCase = true) ||
@@ -148,7 +164,7 @@ fun JellyfinBrowseScreen(
                     onConnect = onConnectServer,
                 )
             }
-            if (state.libraries.isNotEmpty()) {
+            if (showLibrarySelector && state.libraries.isNotEmpty()) {
                 item(key = "libraries") {
                     LibrarySelector(
                         libraries = state.libraries,
