@@ -1,0 +1,90 @@
+CREATE TABLE jellyfin_items (
+    id TEXT NOT NULL PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    library_id TEXT,
+    name TEXT NOT NULL,
+    sort_name TEXT,
+    overview TEXT,
+    type TEXT NOT NULL,
+    media_type TEXT,
+    taglines TEXT,
+    parent_id TEXT,
+    primary_image_tag TEXT,
+    thumb_image_tag TEXT,
+    backdrop_image_tag TEXT,
+    run_time_ticks INTEGER,
+    position_ticks INTEGER,
+    played_percentage REAL,
+    production_year INTEGER,
+    premiere_date TEXT,
+    community_rating REAL,
+    official_rating TEXT,
+    index_number INTEGER,
+    parent_index_number INTEGER,
+    series_name TEXT,
+    season_id TEXT,
+    episode_title TEXT,
+    last_played TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+selectByLibrary:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND library_id = ?
+ORDER BY COALESCE(sort_name, name)
+LIMIT ? OFFSET ?;
+
+selectContinueWatching:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0
+ORDER BY COALESCE(last_played, '') DESC, updated_at DESC
+LIMIT ?;
+
+selectById:
+SELECT *
+FROM jellyfin_items
+WHERE id = ?;
+
+insertOrReplace:
+INSERT OR REPLACE INTO jellyfin_items (
+    id,
+    server_id,
+    library_id,
+    name,
+    sort_name,
+    overview,
+    type,
+    media_type,
+    taglines,
+    parent_id,
+    primary_image_tag,
+    thumb_image_tag,
+    backdrop_image_tag,
+    run_time_ticks,
+    position_ticks,
+    played_percentage,
+    production_year,
+    premiere_date,
+    community_rating,
+    official_rating,
+    index_number,
+    parent_index_number,
+    series_name,
+    season_id,
+    episode_title,
+    last_played,
+    updated_at
+)
+VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+);
+
+deleteByServerAndLibrary:
+DELETE FROM jellyfin_items
+WHERE server_id = ? AND library_id = ?;
+
+deleteByServer:
+DELETE FROM jellyfin_items
+WHERE server_id = ?;

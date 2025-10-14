@@ -10,7 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material3.Button
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,9 +36,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import dev.jellystack.core.currentPlatform
+import dev.jellystack.core.jellyfin.JellyfinHomeState
+import dev.jellystack.core.jellyfin.JellyfinItem
+import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
 import dev.jellystack.design.theme.ThemeController
@@ -65,6 +66,7 @@ fun JellystackRoot(
             PlaybackState.Stopped -> "Stopped"
         }
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
+    val browseState = remember { JellyfinHomeState() }
 
     CompositionLocalProvider(LocalThemeController provides themeController) {
         JellystackTheme(isDarkTheme = isDarkTheme) {
@@ -76,6 +78,11 @@ fun JellystackRoot(
                             playbackStatus = playbackDescription,
                             onToggleTheme = themeController::toggle,
                             onOpenSettings = { currentScreen = JellystackScreen.Settings },
+                            browseState = browseState,
+                            onSelectLibrary = {},
+                            onRefreshLibraries = {},
+                            onLoadMore = {},
+                            onOpenItemDetail = {},
                         )
 
                     JellystackScreen.Settings ->
@@ -97,6 +104,11 @@ private fun HomeScreen(
     playbackStatus: String,
     onToggleTheme: () -> Unit,
     onOpenSettings: () -> Unit,
+    browseState: JellyfinHomeState,
+    onSelectLibrary: (String) -> Unit,
+    onRefreshLibraries: () -> Unit,
+    onLoadMore: () -> Unit,
+    onOpenItemDetail: (JellyfinItem) -> Unit,
 ) {
     JellystackScaffold(
         title = "Jellystack",
@@ -109,34 +121,26 @@ private fun HomeScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "Jellystack running on ${currentPlatform().name}",
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "Current theme: ${if (isDarkTheme) "Dark" else "Light"}",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = "Playback state: $playbackStatus",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-            Button(
+            AssistChip(
+                onClick = onOpenSettings,
+                label = { Text("Playback: $playbackStatus") },
                 modifier =
                     Modifier
+                        .align(Alignment.End)
                         .semantics { role = Role.Button }
                         .testTag(JellystackTags.OPEN_SETTINGS),
-                onClick = onOpenSettings,
-            ) {
-                Text("Open theme settings")
-            }
+            )
+            JellyfinBrowseScreen(
+                state = browseState,
+                onSelectLibrary = onSelectLibrary,
+                onRefresh = onRefreshLibraries,
+                onLoadMore = onLoadMore,
+                onOpenDetail = onOpenItemDetail,
+                modifier = Modifier.weight(1f, fill = true),
+            )
         }
     }
 }
