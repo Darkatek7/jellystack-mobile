@@ -1,5 +1,6 @@
 package dev.jellystack.core.server
 
+import io.github.aakira.napier.Napier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,7 +69,35 @@ class ServerRepository(
         servers.value = loadServers()
     }
 
-    private suspend fun loadServers(): List<ManagedServer> = store.list().map { it.toManagedServer() }
+    private suspend fun loadServers(): List<ManagedServer> {
+        val records = store.list()
+        if (records.isEmpty()) {
+            return emptyList()
+        }
+
+        val validServers = mutableListOf<ManagedServer>()
+        records.forEach { record ->
+            val managed =
+                runCatching { record.toManagedServer() }
+                    .onFailure { error ->
+                        Napier.e(
+                            message = "Dropping corrupted server entry ${record.id}",
+                            throwable = error,
+                        )
+                        runCatching { store.delete(record.id) }
+                            .onFailure { cleanupError ->
+                                Napier.e(
+                                    message = "Failed to remove corrupted server entry ${record.id}",
+                                    throwable = cleanupError,
+                                )
+                            }
+                    }.getOrNull()
+            if (managed != null) {
+                validServers += managed
+            }
+        }
+        return validServers
+    }
 
     private fun validate(request: ServerRegistration) {
         if (request.name.isBlank()) {

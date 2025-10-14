@@ -1,5 +1,6 @@
 package dev.jellystack.app.di
 
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.jellystack.core.jellyfin.JellyfinItemDetailStore
 import dev.jellystack.core.jellyfin.JellyfinItemStore
@@ -15,7 +16,7 @@ import org.koin.dsl.module
 
 val androidAppModule =
     module {
-        single {
+        single<SqlDriver> {
             AndroidSqliteDriver(
                 schema = JellystackDatabase.Schema,
                 context = androidContext(),
