@@ -93,7 +93,7 @@ class JellyfinBrowseApi(
         libraryId: String,
         limit: Int,
         includeItemTypes: String,
-    ): JellyfinItemsResponse =
+    ): List<JellyfinItemDto> =
         client
             .request {
                 method = HttpMethod.Get

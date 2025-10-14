@@ -105,8 +105,8 @@ class JellyfinBrowseRepository(
         val environment = environmentProvider.current() ?: return emptyList()
         val api = apiFor(environment)
         val now = clock.now()
-        val response = api.fetchLatestItems(environment.userId, libraryId, limit, includeItemTypes)
-        val records = response.items.map { it.toRecord(environment, fallbackLibraryId = libraryId, updatedAt = now) }
+        val items = api.fetchLatestItems(environment.userId, libraryId, limit, includeItemTypes)
+        val records = items.map { it.toRecord(environment, fallbackLibraryId = libraryId, updatedAt = now) }
         itemStore.upsert(records)
         return records.map { it.toDomain() }
     }

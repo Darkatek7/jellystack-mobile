@@ -255,16 +255,8 @@ class JellyfinBrowseCoordinatorTest {
             }
         """
 
-        private const val LATEST_SHOWS_JSON = """
-            {
-              "Items": []
-            }
-        """
+        private const val LATEST_SHOWS_JSON = "[]"
 
-        private const val LATEST_MOVIES_JSON = """
-            {
-              "Items": []
-            }
-        """
+        private const val LATEST_MOVIES_JSON = "[]"
     }
 }

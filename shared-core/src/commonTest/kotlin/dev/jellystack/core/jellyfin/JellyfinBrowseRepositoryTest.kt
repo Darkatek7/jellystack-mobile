@@ -38,6 +38,12 @@ class JellyfinBrowseRepositoryTest {
                     "/Users/user-123/Views" -> LIBRARIES_JSON
                     "/Users/user-123/Items/Resume" -> RESUME_JSON
                     "/Users/user-123/Items/item-1" -> DETAIL_JSON
+                    "/Users/user-123/Items/Latest" ->
+                        when (request.url.parameters["IncludeItemTypes"]) {
+                            "Movie" -> LATEST_MOVIES_JSON
+                            "Series,Episode" -> LATEST_SHOWS_JSON
+                            else -> error("Unexpected includeItemTypes: ${request.url.parameters}")
+                        }
                     "/Users/user-123/Items" -> ITEMS_JSON
                     else -> error("Unexpected request path: $path")
                 }
@@ -83,6 +89,19 @@ class JellyfinBrowseRepositoryTest {
             assertEquals(2, items.size)
             val stored = itemStore.listByLibrary(environment.serverKey, "lib-1", limit = 10, offset = 0)
             assertEquals(2, stored.size)
+        }
+
+    @Test
+    fun refreshRecentlyAddedParsesArrayResponse() =
+        runTest {
+            repository.refreshLibraries()
+
+            val movies = repository.refreshRecentlyAddedMovies(libraryId = "lib-1", limit = 5)
+            val shows = repository.refreshRecentlyAddedShows(libraryId = "lib-1", limit = 5)
+
+            assertEquals(listOf("movie-latest"), movies.map { it.id })
+            assertEquals(listOf("lib-1"), movies.mapNotNull { it.libraryId })
+            assertEquals(listOf("show-latest"), shows.map { it.id })
         }
 
     @Test
@@ -217,6 +236,32 @@ class JellyfinBrowseRepositoryTest {
               ],
               "TotalRecordCount": 2
             }
+        """
+
+        private const val LATEST_MOVIES_JSON = """
+            [
+              {
+                "Id": "movie-latest",
+                "Name": "Latest Movie",
+                "Type": "Movie",
+                "MediaType": "Video",
+                "ParentId": "lib-1",
+                "ImageTags": {"Primary": "latest-movie-tag"}
+              }
+            ]
+        """
+
+        private const val LATEST_SHOWS_JSON = """
+            [
+              {
+                "Id": "show-latest",
+                "Name": "Latest Show",
+                "Type": "Series",
+                "MediaType": "Video",
+                "ParentId": "lib-2",
+                "ImageTags": {"Primary": "latest-show-tag"}
+              }
+            ]
         """
 
         private const val RESUME_JSON = ITEMS_JSON
