@@ -128,6 +128,8 @@ class JellyfinBrowseRepository(
         cachedApis.getOrPut(environment.serverKey) { apiFactory(environment) }
 
     suspend fun currentServerBaseUrl(): String? = environmentProvider.current()?.baseUrl
+
+    suspend fun currentAccessToken(): String? = environmentProvider.current()?.accessToken
 }
 
 private fun JellyfinLibraryDto.toRecord(

@@ -31,6 +31,8 @@ kotlin {
                 implementation(libs.compose.windowsize)
                 implementation(libs.coroutines.core)
                 implementation(libs.koin.core)
+                implementation(libs.coil.compose)
+                implementation(libs.coil.network.okhttp)
             }
         }
         val commonTest by getting {

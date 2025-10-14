@@ -22,6 +22,7 @@ data class JellyfinHomeState(
     val endReached: Boolean = false,
     val errorMessage: String? = null,
     val imageBaseUrl: String? = null,
+    val imageAccessToken: String? = null,
 )
 
 class JellyfinBrowseCoordinator(
@@ -55,6 +56,7 @@ class JellyfinBrowseCoordinator(
                             }
                         val selectedId = selectDefaultLibrary(libraries)
                         val imageBaseUrl = repository.currentServerBaseUrl()
+                        val imageAccessToken = repository.currentAccessToken()
 
                         val (continueWatching, firstPage) =
                             coroutineScope {
@@ -88,15 +90,18 @@ class JellyfinBrowseCoordinator(
                                 endReached = firstPage.size < pageSize,
                                 errorMessage = null,
                                 imageBaseUrl = imageBaseUrl,
+                                imageAccessToken = imageAccessToken,
                             )
                     } catch (t: Throwable) {
                         val imageBaseUrl = repository.currentServerBaseUrl()
+                        val imageAccessToken = repository.currentAccessToken()
                         mutableState.value =
                             mutableState.value.copy(
                                 isInitialLoading = false,
                                 isPageLoading = false,
                                 errorMessage = t.message ?: "Failed to load Jellyfin data",
                                 imageBaseUrl = imageBaseUrl,
+                                imageAccessToken = imageAccessToken,
                             )
                     }
                 }
@@ -147,12 +152,14 @@ class JellyfinBrowseCoordinator(
             val selectedId = mutableState.value.selectedLibraryId ?: return
             val stateBefore = mutableState.value
             val imageBaseUrl = repository.currentServerBaseUrl()
+            val imageAccessToken = repository.currentAccessToken()
             mutableState.value =
                 stateBefore.copy(
                     isInitialLoading = refresh && page == 0,
                     isPageLoading = !refresh,
                     errorMessage = null,
                     imageBaseUrl = imageBaseUrl,
+                    imageAccessToken = imageAccessToken,
                 )
             try {
                 val items = repository.loadLibraryPage(selectedId, page = page, pageSize = pageSize, refresh = refresh)
@@ -170,6 +177,7 @@ class JellyfinBrowseCoordinator(
                         currentPage = page,
                         endReached = items.size < pageSize,
                         imageBaseUrl = imageBaseUrl,
+                        imageAccessToken = imageAccessToken,
                     )
             } catch (t: Throwable) {
                 mutableState.value =
@@ -178,6 +186,7 @@ class JellyfinBrowseCoordinator(
                         isPageLoading = false,
                         errorMessage = t.message ?: "Failed to load items",
                         imageBaseUrl = imageBaseUrl,
+                        imageAccessToken = imageAccessToken,
                     )
             }
         }

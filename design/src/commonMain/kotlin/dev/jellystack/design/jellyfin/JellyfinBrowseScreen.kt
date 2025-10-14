@@ -38,16 +38,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -67,6 +76,24 @@ fun JellyfinBrowseScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val selectedLibrary =
+        remember(state.libraries, state.selectedLibraryId) {
+            state.libraries.firstOrNull { it.id == state.selectedLibraryId }
+        }
+    val isTvLibrary =
+        selectedLibrary
+            ?.collectionType
+            ?.equals("tvshows", ignoreCase = true) == true ||
+            selectedLibrary
+                ?.collectionType
+                ?.equals("series", ignoreCase = true) == true ||
+            state.libraryItems.any { item ->
+                item.type.equals("Series", ignoreCase = true) || item.type.equals("Episode", ignoreCase = true)
+            }
+    val seriesGroups =
+        remember(state.libraryItems, isTvLibrary) {
+            if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
+        }
     LoadMoreListener(
         listState = listState,
         shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
@@ -92,6 +119,7 @@ fun JellyfinBrowseScreen(
                     ContinueWatchingSection(
                         items = state.continueWatching,
                         baseUrl = state.imageBaseUrl,
+                        accessToken = state.imageAccessToken,
                         onItemSelected = onOpenDetail,
                     )
                 }
@@ -103,15 +131,33 @@ fun JellyfinBrowseScreen(
                     onConnect = onConnectServer,
                 )
             }
-            items(
-                items = state.libraryItems,
-                key = { it.id },
-            ) { item ->
-                LibraryItemRow(
-                    item = item,
-                    baseUrl = state.imageBaseUrl,
-                    onClick = { onOpenDetail(item) },
-                )
+            if (isTvLibrary) {
+                items(
+                    items = seriesGroups,
+                    key = { it.id },
+                ) { group ->
+                    TvSeriesCard(
+                        group = group,
+                        baseUrl = state.imageBaseUrl,
+                        accessToken = state.imageAccessToken,
+                        onOpenSeries = { series ->
+                            onOpenDetail(series)
+                        },
+                        onOpenEpisode = onOpenDetail,
+                    )
+                }
+            } else {
+                items(
+                    items = state.libraryItems,
+                    key = { it.id },
+                ) { item ->
+                    LibraryItemRow(
+                        item = item,
+                        baseUrl = state.imageBaseUrl,
+                        accessToken = state.imageAccessToken,
+                        onClick = { onOpenDetail(item) },
+                    )
+                }
             }
             if (state.isPageLoading) {
                 item(key = "pagingLoader") {
@@ -180,6 +226,7 @@ private fun LibrarySelector(
 private fun ContinueWatchingSection(
     items: List<JellyfinItem>,
     baseUrl: String?,
+    accessToken: String?,
     onItemSelected: (JellyfinItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -208,6 +255,7 @@ private fun ContinueWatchingSection(
                 ContinueWatchingCard(
                     item = item,
                     baseUrl = baseUrl,
+                    accessToken = accessToken,
                     onClick = { onItemSelected(item) },
                 )
             }
@@ -219,6 +267,7 @@ private fun ContinueWatchingSection(
 private fun ContinueWatchingCard(
     item: JellyfinItem,
     baseUrl: String?,
+    accessToken: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -236,6 +285,9 @@ private fun ContinueWatchingCard(
                 baseUrl = baseUrl,
                 itemId = item.id,
                 primaryTag = item.primaryImageTag,
+                thumbTag = item.thumbImageTag,
+                backdropTag = item.backdropImageTag,
+                accessToken = accessToken,
                 contentDescription = item.name,
             )
             val progress = progressFraction(item)
@@ -277,10 +329,231 @@ private fun ContinueWatchingCard(
     }
 }
 
+private data class TvSeriesGroup(
+    val id: String,
+    val series: JellyfinItem?,
+    val episodes: List<JellyfinItem>,
+) {
+    val fallbackEpisode: JellyfinItem?
+        get() = episodes.firstOrNull()
+    val title: String
+        get() = series?.name ?: fallbackEpisode?.seriesName ?: fallbackEpisode?.name ?: "Series"
+    val overview: String?
+        get() = series?.overview ?: fallbackEpisode?.overview
+    val posterItemId: String
+        get() = series?.id ?: fallbackEpisode?.id ?: id
+    val primaryImageTag: String?
+        get() = series?.primaryImageTag ?: fallbackEpisode?.primaryImageTag
+    val thumbTag: String?
+        get() = series?.thumbImageTag ?: fallbackEpisode?.thumbImageTag
+    val backdropTag: String?
+        get() = series?.backdropImageTag ?: fallbackEpisode?.backdropImageTag
+    val openItem: JellyfinItem?
+        get() = series ?: fallbackEpisode
+}
+
+private fun groupTvSeries(items: List<JellyfinItem>): List<TvSeriesGroup> {
+    val groups = linkedMapOf<String, MutableTvSeriesGroup>()
+    val nameToKey = mutableMapOf<String, String>()
+
+    fun normalize(value: String?): String? = value?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+
+    fun ensureGroup(key: String): MutableTvSeriesGroup = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
+
+    items
+        .filter { it.type.equals("Series", ignoreCase = true) }
+        .forEach { series ->
+            val key = "series:${series.id}"
+            val group = ensureGroup(key)
+            group.series = series
+            normalize(series.name)?.let { normalized ->
+                nameToKey[normalized] = key
+            }
+        }
+
+    items
+        .filter { it.type.equals("Episode", ignoreCase = true) }
+        .forEach { episode ->
+            val normalizedName = normalize(episode.seriesName)
+            val key =
+                normalizedName?.let { nameToKey[it] }
+                    ?: episode.parentId?.let { "parent:$it" }
+                    ?: episode.seasonId?.let { "season:$it" }
+                    ?: normalizedName?.let { "series-name:$it" }
+                    ?: "episode:${episode.id}"
+            val group = ensureGroup(key)
+            group.episodes += episode
+            if (normalizedName != null && nameToKey[normalizedName] == null) {
+                nameToKey[normalizedName] = key
+            }
+        }
+
+    return groups.values
+        .map { it.toImmutable() }
+        .sortedWith(
+            compareBy<TvSeriesGroup> {
+                it.series?.sortName?.lowercase()
+                    ?: it.title.lowercase()
+            }.thenBy { it.series?.name ?: it.title },
+        )
+}
+
+private fun episodeLabel(item: JellyfinItem): String {
+    val season = item.parentIndexNumber
+    val episode = item.indexNumber
+    val parts = mutableListOf<String>()
+    if (season != null || episode != null) {
+        val code =
+            buildString {
+                if (season != null) {
+                    append("S")
+                    append(season)
+                }
+                if (episode != null) {
+                    if (season != null) {
+                        append("E")
+                    } else {
+                        append("E")
+                    }
+                    append(episode)
+                }
+            }.takeIf { it.isNotBlank() }
+        if (!code.isNullOrBlank()) {
+            parts += code
+        }
+    }
+    val title = item.episodeTitle ?: item.name
+    if (!title.isNullOrBlank()) {
+        parts += title
+    }
+    return parts.joinToString(" · ").ifBlank { item.name }
+}
+
+private data class MutableTvSeriesGroup(
+    val key: String,
+    var series: JellyfinItem? = null,
+    val episodes: MutableList<JellyfinItem> = mutableListOf(),
+) {
+    fun toImmutable(): TvSeriesGroup =
+        TvSeriesGroup(
+            id = series?.id ?: key,
+            series = series,
+            episodes = episodes.distinctBy { it.id },
+        )
+}
+
+@Composable
+private fun TvSeriesCard(
+    group: TvSeriesGroup,
+    baseUrl: String?,
+    accessToken: String?,
+    onOpenSeries: (JellyfinItem) -> Unit,
+    onOpenEpisode: (JellyfinItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember(group.id) { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        onClick = { expanded = !expanded },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                PosterImage(
+                    modifier =
+                        Modifier
+                            .width(120.dp)
+                            .aspectRatio(2f / 3f),
+                    baseUrl = baseUrl,
+                    itemId = group.posterItemId,
+                    primaryTag = group.primaryImageTag,
+                    thumbTag = group.thumbTag,
+                    backdropTag = group.backdropTag,
+                    accessToken = accessToken,
+                    contentDescription = group.title,
+                )
+                Column(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = group.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    group.overview?.takeIf { it.isNotBlank() }?.let { overview ->
+                        Text(
+                            text = overview,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = if (expanded) 6 else 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    group.openItem?.let { seriesItem ->
+                        TextButton(onClick = { onOpenSeries(seriesItem) }) {
+                            Text("View series")
+                        }
+                    }
+                }
+            }
+            if (group.episodes.isNotEmpty()) {
+                Text(
+                    text = if (expanded) "Tap card to hide episodes" else "Tap card to view episodes",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                if (expanded) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = "Episodes",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        val sortedEpisodes =
+                            group.episodes.sortedWith(
+                                compareBy<JellyfinItem> { it.parentIndexNumber ?: Int.MAX_VALUE }
+                                    .thenBy { it.indexNumber ?: Int.MAX_VALUE }
+                                    .thenBy { it.name },
+                            )
+                        sortedEpisodes.forEach { episode ->
+                            TextButton(onClick = { onOpenEpisode(episode) }) {
+                                Text(
+                                    text = episodeLabel(episode),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun LibraryItemRow(
     item: JellyfinItem,
     baseUrl: String?,
+    accessToken: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -300,6 +573,9 @@ private fun LibraryItemRow(
                 baseUrl = baseUrl,
                 itemId = item.id,
                 primaryTag = item.primaryImageTag,
+                thumbTag = item.thumbImageTag,
+                backdropTag = item.backdropImageTag,
+                accessToken = accessToken,
                 contentDescription = item.name,
             )
             Column(
@@ -356,6 +632,9 @@ private fun PosterImage(
     baseUrl: String?,
     itemId: String,
     primaryTag: String?,
+    thumbTag: String?,
+    backdropTag: String?,
+    accessToken: String?,
     contentDescription: String,
 ) {
     val shape = MaterialTheme.shapes.medium
@@ -369,11 +648,33 @@ private fun PosterImage(
                 ?.uppercaseChar()
                 ?.toString()
         }
+    val imageUrl =
+        remember(baseUrl, accessToken, itemId, primaryTag, thumbTag, backdropTag) {
+            buildImageUrl(baseUrl, itemId, primaryTag, "Primary", accessToken)
+                ?: buildImageUrl(baseUrl, itemId, thumbTag, "Thumb", accessToken)
+                ?: buildImageUrl(baseUrl, itemId, backdropTag, "Backdrop", accessToken)
+        }
+    val context = LocalPlatformContext.current
     Box(
-        modifier = modifier.background(fallbackColor, shape = shape),
+        modifier =
+            modifier
+                .clip(shape)
+                .background(fallbackColor),
         contentAlignment = Alignment.Center,
     ) {
-        if (!placeholder.isNullOrBlank()) {
+        if (imageUrl != null) {
+            AsyncImage(
+                modifier = Modifier.fillMaxSize(),
+                model =
+                    ImageRequest
+                        .Builder(context)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .build(),
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+            )
+        } else if (!placeholder.isNullOrBlank()) {
             Text(
                 text = placeholder,
                 style = MaterialTheme.typography.titleLarge,
@@ -381,6 +682,26 @@ private fun PosterImage(
             )
         }
     }
+}
+
+private fun buildImageUrl(
+    baseUrl: String?,
+    itemId: String,
+    tag: String?,
+    imageType: String,
+    accessToken: String?,
+): String? {
+    if (baseUrl.isNullOrBlank() || tag.isNullOrBlank()) {
+        return null
+    }
+    val normalizedBase =
+        if (baseUrl.endsWith("/")) {
+            baseUrl.dropLast(1)
+        } else {
+            baseUrl
+        }
+    val tokenQuery = accessToken?.let { "&api_key=$it" }.orEmpty()
+    return "$normalizedBase/Items/$itemId/Images/$imageType?tag=$tag$tokenQuery"
 }
 
 @Composable
@@ -449,6 +770,7 @@ private fun LoadMoreListener(
 fun JellyfinDetailContent(
     detail: JellyfinItemDetail,
     baseUrl: String?,
+    accessToken: String?,
     onPlay: () -> Unit,
     onQueueDownload: () -> Unit,
     modifier: Modifier = Modifier,
@@ -474,6 +796,9 @@ fun JellyfinDetailContent(
             baseUrl = baseUrl,
             itemId = detail.id,
             primaryTag = detail.primaryImageTag,
+            thumbTag = null,
+            backdropTag = detail.backdropImageTags.firstOrNull(),
+            accessToken = accessToken,
             contentDescription = detail.name,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

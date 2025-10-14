@@ -3,19 +3,21 @@ package dev.jellystack.design
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -28,7 +30,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -58,6 +59,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
@@ -86,7 +89,6 @@ import kotlinx.coroutines.launch
 
 private enum class JellystackScreen {
     Home,
-    Settings,
     Detail,
 }
 
@@ -96,27 +98,33 @@ private sealed interface JellyfinDetailUiState {
     data class Loading(
         val item: JellyfinItem,
         val imageBaseUrl: String?,
+        val imageAccessToken: String?,
     ) : JellyfinDetailUiState
 
     data class Loaded(
         val item: JellyfinItem,
         val detail: JellyfinItemDetail,
         val imageBaseUrl: String?,
+        val imageAccessToken: String?,
     ) : JellyfinDetailUiState
 
     data class Error(
         val item: JellyfinItem,
         val message: String,
         val imageBaseUrl: String?,
+        val imageAccessToken: String?,
     ) : JellyfinDetailUiState
 }
 
-private fun JellyfinDetailUiState.withBaseUrl(imageBaseUrl: String?): JellyfinDetailUiState =
+private fun JellyfinDetailUiState.withImageInfo(
+    imageBaseUrl: String?,
+    imageAccessToken: String?,
+): JellyfinDetailUiState =
     when (this) {
         JellyfinDetailUiState.Hidden -> this
-        is JellyfinDetailUiState.Error -> copy(imageBaseUrl = imageBaseUrl)
-        is JellyfinDetailUiState.Loaded -> copy(imageBaseUrl = imageBaseUrl)
-        is JellyfinDetailUiState.Loading -> copy(imageBaseUrl = imageBaseUrl)
+        is JellyfinDetailUiState.Error -> copy(imageBaseUrl = imageBaseUrl, imageAccessToken = imageAccessToken)
+        is JellyfinDetailUiState.Loaded -> copy(imageBaseUrl = imageBaseUrl, imageAccessToken = imageAccessToken)
+        is JellyfinDetailUiState.Loading -> copy(imageBaseUrl = imageBaseUrl, imageAccessToken = imageAccessToken)
     }
 
 private data class ServerFormState(
@@ -138,6 +146,7 @@ private data class ServerManagementUiState(
 )
 
 @Suppress("FunctionName", "ktlint:standard:function-naming")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JellystackRoot(
     defaultDarkTheme: Boolean = false,
@@ -206,7 +215,8 @@ fun JellystackRoot(
 
     val loadDetail: (JellyfinItem, Boolean) -> Unit = { item, forceRefresh ->
         val baseUrl = browseCoordinator.state.value.imageBaseUrl
-        detailState = JellyfinDetailUiState.Loading(item, baseUrl)
+        val accessToken = browseCoordinator.state.value.imageAccessToken
+        detailState = JellyfinDetailUiState.Loading(item, baseUrl, accessToken)
         detailJob?.cancel()
         val job =
             coroutineScope.launch {
@@ -218,6 +228,7 @@ fun JellystackRoot(
                                 item = item,
                                 detail = detail,
                                 imageBaseUrl = browseCoordinator.state.value.imageBaseUrl,
+                                imageAccessToken = browseCoordinator.state.value.imageAccessToken,
                             )
                     } else {
                         detailState =
@@ -225,6 +236,7 @@ fun JellystackRoot(
                                 item = item,
                                 message = "Item detail unavailable",
                                 imageBaseUrl = browseCoordinator.state.value.imageBaseUrl,
+                                imageAccessToken = browseCoordinator.state.value.imageAccessToken,
                             )
                     }
                 } catch (t: Throwable) {
@@ -233,6 +245,7 @@ fun JellystackRoot(
                             item = item,
                             message = t.message ?: "Failed to load item detail",
                             imageBaseUrl = browseCoordinator.state.value.imageBaseUrl,
+                            imageAccessToken = browseCoordinator.state.value.imageAccessToken,
                         )
                 }
             }
@@ -336,51 +349,114 @@ fun JellystackRoot(
             }
     }
 
-    LaunchedEffect(browseState.imageBaseUrl) {
-        detailState = detailState.withBaseUrl(browseState.imageBaseUrl)
+    LaunchedEffect(browseState.imageBaseUrl, browseState.imageAccessToken) {
+        detailState = detailState.withImageInfo(browseState.imageBaseUrl, browseState.imageAccessToken)
     }
+
+    var isSettingsOpen by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(LocalThemeController provides themeController) {
         JellystackTheme(isDarkTheme = isDarkTheme) {
             Surface {
-                when (currentScreen) {
-                    JellystackScreen.Home ->
-                        HomeScreen(
-                            isDarkTheme = isDarkTheme,
-                            playbackStatus = playbackDescription,
-                            onToggleTheme = themeController::toggle,
-                            onOpenSettings = { currentScreen = JellystackScreen.Settings },
-                            browseState = browseState,
-                            onSelectLibrary = onSelectLibrary,
-                            onRefreshLibraries = onRefreshLibraries,
-                            onLoadMore = onLoadMore,
-                            onOpenItemDetail = onOpenItemDetail,
-                            onAddServer = openAddServerDialog,
-                        )
+                val topBarTitle =
+                    when (currentScreen) {
+                        JellystackScreen.Home -> "Jellystack"
+                        JellystackScreen.Detail ->
+                            when (val state = detailState) {
+                                is JellyfinDetailUiState.Loaded -> state.detail.name
+                                is JellyfinDetailUiState.Error -> state.item.name
+                                is JellyfinDetailUiState.Loading -> state.item.name
+                                JellyfinDetailUiState.Hidden -> "Details"
+                            }
+                    }
+                val canNavigateBack = currentScreen != JellystackScreen.Home
 
-                    JellystackScreen.Settings ->
-                        SettingsScreen(
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text(text = topBarTitle) },
+                            navigationIcon = {
+                                if (canNavigateBack) {
+                                    IconButton(
+                                        modifier =
+                                            Modifier.semantics {
+                                                role = Role.Button
+                                                contentDescription = "Navigate back"
+                                            },
+                                        onClick = onBackFromDetail,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = null,
+                                        )
+                                    }
+                                }
+                            },
+                            actions = {
+                                IconButton(
+                                    modifier = Modifier.testTag(JellystackTags.OPEN_SETTINGS),
+                                    onClick = {
+                                        isSettingsOpen = true
+                                        serverErrorMessage = null
+                                    },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "Open settings",
+                                    )
+                                }
+                            },
+                        )
+                    },
+                ) { padding ->
+                    when (currentScreen) {
+                        JellystackScreen.Home ->
+                            HomeContent(
+                                playbackStatus = playbackDescription,
+                                browseState = browseState,
+                                onSelectLibrary = onSelectLibrary,
+                                onRefreshLibraries = onRefreshLibraries,
+                                onLoadMore = onLoadMore,
+                                onOpenItemDetail = onOpenItemDetail,
+                                onAddServer = {
+                                    isSettingsOpen = true
+                                    openAddServerDialog()
+                                },
+                                modifier = Modifier.padding(padding),
+                            )
+
+                        JellystackScreen.Detail ->
+                            DetailContent(
+                                state = detailState,
+                                onRetry = onRetryDetail,
+                                onPlay = playbackAction,
+                                modifier = Modifier.padding(padding),
+                            )
+                    }
+
+                    if (isSettingsOpen) {
+                        SettingsDialog(
                             isDarkTheme = isDarkTheme,
                             onToggleTheme = themeController::toggle,
-                            onBack = { currentScreen = JellystackScreen.Home },
                             serverState = serverUiState,
-                            onOpenAddServer = openAddServerDialog,
-                            onDismissAddServer = dismissAddServerDialog,
+                            onOpenAddServer = {
+                                openAddServerDialog()
+                            },
+                            onDismissAddServer = {
+                                dismissAddServerDialog()
+                            },
                             onUpdateServerForm = { serverFormState = it },
                             onSubmitServer = submitServer,
                             onRemoveServer = removeServer,
                             onClearServerError = { serverErrorMessage = null },
+                            onClose = {
+                                showAddServerDialog = false
+                                serverFormState = ServerFormState()
+                                serverErrorMessage = null
+                                isSettingsOpen = false
+                            },
                         )
-
-                    JellystackScreen.Detail ->
-                        JellyfinDetailScreen(
-                            isDarkTheme = isDarkTheme,
-                            onToggleTheme = themeController::toggle,
-                            state = detailState,
-                            onBack = onBackFromDetail,
-                            onRetry = onRetryDetail,
-                            onPlay = playbackAction,
-                        )
+                    }
                 }
             }
         }
@@ -388,6 +464,7 @@ fun JellystackRoot(
 }
 
 @Suppress("FunctionName")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun JellystackPreviewRoot(
     defaultDarkTheme: Boolean,
@@ -402,31 +479,90 @@ private fun JellystackPreviewRoot(
             PlaybackState.Stopped -> "Stopped"
         }
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
+    var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
+    var isSettingsOpen by remember { mutableStateOf(false) }
     val browseState = remember { JellyfinHomeState() }
 
     CompositionLocalProvider(LocalThemeController provides themeController) {
         JellystackTheme(isDarkTheme = isDarkTheme) {
             Surface {
-                when (currentScreen) {
-                    JellystackScreen.Home ->
-                        HomeScreen(
-                            isDarkTheme = isDarkTheme,
-                            playbackStatus = playbackDescription,
-                            onToggleTheme = themeController::toggle,
-                            onOpenSettings = { currentScreen = JellystackScreen.Settings },
-                            browseState = browseState,
-                            onSelectLibrary = {},
-                            onRefreshLibraries = {},
-                            onLoadMore = {},
-                            onOpenItemDetail = {},
-                            onAddServer = {},
-                        )
+                val topBarTitle =
+                    when (currentScreen) {
+                        JellystackScreen.Home -> "Jellystack"
+                        JellystackScreen.Detail ->
+                            when (val state = detailState) {
+                                is JellyfinDetailUiState.Loaded -> state.detail.name
+                                is JellyfinDetailUiState.Error -> state.item.name
+                                is JellyfinDetailUiState.Loading -> state.item.name
+                                JellyfinDetailUiState.Hidden -> "Details"
+                            }
+                    }
+                val canNavigateBack = currentScreen != JellystackScreen.Home
 
-                    JellystackScreen.Settings ->
-                        SettingsScreen(
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text(text = topBarTitle) },
+                            navigationIcon = {
+                                if (canNavigateBack) {
+                                    IconButton(
+                                        modifier =
+                                            Modifier.semantics {
+                                                role = Role.Button
+                                                contentDescription = "Navigate back"
+                                            },
+                                        onClick = { currentScreen = JellystackScreen.Home },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = null,
+                                        )
+                                    }
+                                }
+                            },
+                            actions = {
+                                IconButton(
+                                    modifier = Modifier.testTag(JellystackTags.OPEN_SETTINGS),
+                                    onClick = { isSettingsOpen = true },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "Open settings",
+                                    )
+                                }
+                            },
+                        )
+                    },
+                ) { padding ->
+                    when (currentScreen) {
+                        JellystackScreen.Home ->
+                            HomeContent(
+                                playbackStatus = playbackDescription,
+                                browseState = browseState,
+                                onSelectLibrary = {},
+                                onRefreshLibraries = {},
+                                onLoadMore = {},
+                                onOpenItemDetail = {
+                                    detailState = JellyfinDetailUiState.Loading(it, null, null)
+                                    currentScreen = JellystackScreen.Detail
+                                },
+                                onAddServer = { isSettingsOpen = true },
+                                modifier = Modifier.padding(padding),
+                            )
+
+                        JellystackScreen.Detail ->
+                            DetailContent(
+                                state = detailState,
+                                onRetry = {},
+                                onPlay = {},
+                                modifier = Modifier.padding(padding),
+                            )
+                    }
+
+                    if (isSettingsOpen) {
+                        SettingsDialog(
                             isDarkTheme = isDarkTheme,
                             onToggleTheme = themeController::toggle,
-                            onBack = { currentScreen = JellystackScreen.Home },
                             serverState = ServerManagementUiState(),
                             onOpenAddServer = {},
                             onDismissAddServer = {},
@@ -434,18 +570,9 @@ private fun JellystackPreviewRoot(
                             onSubmitServer = {},
                             onRemoveServer = {},
                             onClearServerError = {},
+                            onClose = { isSettingsOpen = false },
                         )
-
-                    JellystackScreen.Detail ->
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Preview detail requires runtime data",
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
+                    }
                 }
             }
         }
@@ -454,144 +581,104 @@ private fun JellystackPreviewRoot(
 
 @Suppress("FunctionName")
 @Composable
-private fun HomeScreen(
-    isDarkTheme: Boolean,
+private fun HomeContent(
     playbackStatus: String,
-    onToggleTheme: () -> Unit,
-    onOpenSettings: () -> Unit,
     browseState: JellyfinHomeState,
     onSelectLibrary: (String) -> Unit,
     onRefreshLibraries: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenItemDetail: (JellyfinItem) -> Unit,
     onAddServer: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    JellystackScaffold(
-        title = "Jellystack",
-        canNavigateBack = false,
-        isDarkTheme = isDarkTheme,
-        onToggleTheme = onToggleTheme,
-    ) { padding ->
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AssistChip(
-                onClick = onOpenSettings,
-                label = { Text("Playback: $playbackStatus") },
-                modifier =
-                    Modifier
-                        .align(Alignment.End)
-                        .semantics { role = Role.Button }
-                        .testTag(JellystackTags.OPEN_SETTINGS),
-            )
-            JellyfinBrowseScreen(
-                state = browseState,
-                onSelectLibrary = onSelectLibrary,
-                onRefresh = onRefreshLibraries,
-                onLoadMore = onLoadMore,
-                onOpenDetail = onOpenItemDetail,
-                onConnectServer = onAddServer,
-                modifier = Modifier.weight(1f, fill = true),
-            )
-        }
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AssistChip(
+            onClick = {},
+            enabled = false,
+            label = { Text("Playback: $playbackStatus") },
+            modifier = Modifier.align(Alignment.End),
+        )
+        JellyfinBrowseScreen(
+            state = browseState,
+            onSelectLibrary = onSelectLibrary,
+            onRefresh = onRefreshLibraries,
+            onLoadMore = onLoadMore,
+            onOpenDetail = onOpenItemDetail,
+            onConnectServer = onAddServer,
+            modifier = Modifier.weight(1f, fill = true),
+        )
     }
 }
 
 @Suppress("FunctionName")
 @Composable
-private fun JellyfinDetailScreen(
-    isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit,
+private fun DetailContent(
     state: JellyfinDetailUiState,
-    onBack: () -> Unit,
     onRetry: () -> Unit,
     onPlay: (JellyfinItemDetail) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val title =
-        when (state) {
-            is JellyfinDetailUiState.Loaded -> state.detail.name
-            is JellyfinDetailUiState.Error -> state.item.name
-            is JellyfinDetailUiState.Loading -> state.item.name
-            JellyfinDetailUiState.Hidden -> "Details"
-        }
-    JellystackScaffold(
-        title = title,
-        canNavigateBack = true,
-        isDarkTheme = isDarkTheme,
-        onToggleTheme = onToggleTheme,
-        onBack = onBack,
-    ) { padding ->
-        when (state) {
-            JellyfinDetailUiState.Hidden ->
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Select an item to view details",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-
-            is JellyfinDetailUiState.Loading ->
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
-
-            is JellyfinDetailUiState.Error ->
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = state.message,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Button(onClick = onRetry) {
-                        Text("Retry")
-                    }
-                }
-
-            is JellyfinDetailUiState.Loaded ->
-                JellyfinDetailContent(
-                    detail = state.detail,
-                    baseUrl = state.imageBaseUrl,
-                    onPlay = { onPlay(state.detail) },
-                    onQueueDownload = {},
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding),
+    when (state) {
+        JellyfinDetailUiState.Hidden ->
+            Box(
+                modifier = modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Select an item to view details",
+                    style = MaterialTheme.typography.bodyLarge,
                 )
-        }
+            }
+
+        is JellyfinDetailUiState.Loading ->
+            Box(
+                modifier = modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+
+        is JellyfinDetailUiState.Error ->
+            Column(
+                modifier =
+                    modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Button(onClick = onRetry) {
+                    Text("Retry")
+                }
+            }
+
+        is JellyfinDetailUiState.Loaded ->
+            JellyfinDetailContent(
+                detail = state.detail,
+                baseUrl = state.imageBaseUrl,
+                accessToken = state.imageAccessToken,
+                onPlay = { onPlay(state.detail) },
+                onQueueDownload = {},
+                modifier = modifier.fillMaxSize(),
+            )
     }
 }
 
 @Suppress("FunctionName")
 @Composable
-private fun SettingsScreen(
+private fun SettingsDialog(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
-    onBack: () -> Unit,
     serverState: ServerManagementUiState,
     onOpenAddServer: () -> Unit,
     onDismissAddServer: () -> Unit,
@@ -599,19 +686,75 @@ private fun SettingsScreen(
     onSubmitServer: () -> Unit,
     onRemoveServer: (ManagedServer) -> Unit,
     onClearServerError: () -> Unit,
+    onClose: () -> Unit,
 ) {
-    JellystackScaffold(
-        title = "Settings",
-        canNavigateBack = true,
-        isDarkTheme = isDarkTheme,
-        onToggleTheme = onToggleTheme,
-        onBack = onBack,
-    ) { padding ->
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f),
+            shape = MaterialTheme.shapes.extraLarge,
+        ) {
+            SettingsContent(
+                isDarkTheme = isDarkTheme,
+                onToggleTheme = onToggleTheme,
+                serverState = serverState,
+                onOpenAddServer = onOpenAddServer,
+                onDismissAddServer = onDismissAddServer,
+                onUpdateServerForm = onUpdateServerForm,
+                onSubmitServer = onSubmitServer,
+                onRemoveServer = onRemoveServer,
+                onClearServerError = onClearServerError,
+                onClose = onClose,
+            )
+        }
+    }
+}
+
+@Suppress("FunctionName")
+@Composable
+private fun SettingsContent(
+    isDarkTheme: Boolean,
+    onToggleTheme: () -> Unit,
+    serverState: ServerManagementUiState,
+    onOpenAddServer: () -> Unit,
+    onDismissAddServer: () -> Unit,
+    onUpdateServerForm: (ServerFormState) -> Unit,
+    onSubmitServer: () -> Unit,
+    onRemoveServer: (ManagedServer) -> Unit,
+    onClearServerError: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            IconButton(onClick = onClose) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Close settings",
+                )
+            }
+        }
+        HorizontalDivider()
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
@@ -801,66 +944,7 @@ private fun AddServerDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Suppress("FunctionName")
-@Composable
-private fun JellystackScaffold(
-    title: String,
-    canNavigateBack: Boolean,
-    isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit,
-    modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text(text = title) },
-                navigationIcon = {
-                    if (canNavigateBack) {
-                        IconButton(
-                            modifier =
-                                Modifier.semantics {
-                                    role = Role.Button
-                                    contentDescription = "Navigate back"
-                                },
-                            onClick = { onBack?.invoke() },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = null,
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    IconToggleButton(
-                        modifier =
-                            Modifier
-                                .testTag(JellystackTags.THEME_TOGGLE)
-                                .semantics {
-                                    role = Role.Switch
-                                    contentDescription = "Toggle app theme"
-                                },
-                        checked = isDarkTheme,
-                        onCheckedChange = { onToggleTheme() },
-                    ) {
-                        Icon(
-                            imageVector = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
-                            contentDescription = null,
-                        )
-                    }
-                },
-            )
-        },
-        content = content,
-    )
-}
-
 private object JellystackTags {
-    const val THEME_TOGGLE = "theme_toggle"
     const val THEME_SWITCH = "theme_switch"
     const val OPEN_SETTINGS = "open_settings"
 }
