@@ -1,3 +1,5 @@
+import app.cash.sqldelight.gradle.VerifyMigrationTask
+import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -5,6 +7,8 @@ plugins {
     alias(libs.plugins.sqldelight)
     id("com.android.library")
 }
+
+configurations.maybeCreate("sqldelightMigrationClasspath")
 
 kotlin {
     jvmToolchain(17)
@@ -58,10 +62,23 @@ android {
     }
 }
 
+dependencies {
+    add("sqldelightMigrationClasspath", libs.sqlite.jdbc)
+}
+
 sqldelight {
     databases {
         create("JellystackDatabase") {
             packageName.set("dev.jellystack.database")
+            if (OperatingSystem.current().isWindows) {
+                verifyMigrations.set(false)
+            }
         }
+    }
+}
+
+if (OperatingSystem.current().isWindows) {
+    tasks.withType<VerifyMigrationTask>().configureEach {
+        enabled = false
     }
 }
