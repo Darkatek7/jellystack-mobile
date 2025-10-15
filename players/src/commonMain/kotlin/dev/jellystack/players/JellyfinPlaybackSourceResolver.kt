@@ -53,11 +53,6 @@ class JellyfinPlaybackSourceResolver(
                         append(environment.deviceId)
                         append("&UserId=")
                         append(environment.userId)
-                        val startTicks = max(0, startPositionMs).toTicks()
-                        if (startTicks > 0) {
-                            append("&StartTimeTicks=")
-                            append(startTicks)
-                        }
                     }
             }
 
