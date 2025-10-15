@@ -412,28 +412,95 @@ private fun ContinueWatchingCard(
                 )
             }
         }
-        Column(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .height(132.dp),
         ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+            val isEpisode = item.type.equals("Episode", ignoreCase = true)
+            val primaryText =
+                when {
+                    isEpisode -> item.seriesName ?: item.name
+                    else -> item.name
+                }
+            val secondaryText =
+                if (isEpisode) {
+                    formatEpisodeLabel(
+                        seasonNumber = item.parentIndexNumber,
+                        episodeNumber = item.indexNumber,
+                    )
+                } else {
+                    item.officialRating?.takeIf { it.isNotBlank() }
+                }
+            val tertiaryText =
+                if (isEpisode) {
+                    item.episodeTitle?.takeIf { it.isNotBlank() } ?: item.name
+                } else {
+                    item.productionYear?.takeIf { it > 0 }?.toString()
+                }
             Text(
-                text = item.seriesName ?: item.name,
+                text = primaryText,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!item.seriesName.isNullOrBlank()) {
-                Text(
-                    text = item.episodeTitle ?: item.name,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(20.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    secondaryText?.let { text ->
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    tertiaryText?.let { text ->
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+private fun formatEpisodeLabel(
+    seasonNumber: Int?,
+    episodeNumber: Int?,
+): String? {
+    val hasSeason = seasonNumber != null && seasonNumber > 0
+    val hasEpisode = episodeNumber != null && episodeNumber > 0
+    return when {
+        hasSeason && hasEpisode -> "S${seasonNumber} • E${episodeNumber}"
+        hasEpisode -> "Episode ${episodeNumber}"
+        hasSeason -> "Season ${seasonNumber}"
+        else -> null
     }
 }
 
@@ -518,20 +585,49 @@ private fun NextUpCard(
                     .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val isEpisode = item.type.equals("Episode", ignoreCase = true)
+            val primaryText =
+                when {
+                    isEpisode -> item.seriesName ?: item.name
+                    else -> item.name
+                }
+            val secondaryText =
+                if (isEpisode) {
+                    formatEpisodeLabel(
+                        seasonNumber = item.parentIndexNumber,
+                        episodeNumber = item.indexNumber,
+                    )
+                } else {
+                    item.officialRating?.takeIf { it.isNotBlank() }
+                }
+            val tertiaryText =
+                if (isEpisode) {
+                    item.episodeTitle?.takeIf { it.isNotBlank() } ?: item.name
+                } else {
+                    item.productionYear?.takeIf { it > 0 }?.toString()
+                }
             Text(
-                text = item.seriesName ?: item.name,
+                text = primaryText,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
-                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = episodeLabel(item),
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                minLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            secondaryText?.let { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            tertiaryText?.let { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
