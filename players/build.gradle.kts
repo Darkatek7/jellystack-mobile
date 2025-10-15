@@ -30,6 +30,14 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.multiplatform.settings)
+                implementation(libs.coroutines.test)
+            }
+        }
+        val androidMain by getting {
+            dependencies {
+                implementation(libs.coroutines.android)
+                implementation(libs.androidx.media3.exoplayer)
+                implementation(libs.androidx.media3.hls)
             }
         }
     }

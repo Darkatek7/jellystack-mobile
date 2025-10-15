@@ -70,6 +70,7 @@ import com.russhwolf.settings.Settings
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
+import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -88,6 +89,7 @@ import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
 import dev.jellystack.design.theme.ThemeController
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackMode
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackState
 import dev.jellystack.players.SettingsPlaybackProgressStore
@@ -179,6 +181,7 @@ fun JellystackRoot(
             controller ?: PlaybackController(SettingsPlaybackProgressStore(koin.get<Settings>()))
         }
     val themePreferences = remember(koin) { koin.get<ThemePreferenceRepository>() }
+    val environmentProvider = remember(koin) { koin.get<JellyfinEnvironmentProvider>() }
     val themeController =
         remember(themePreferences, defaultDarkTheme) {
             val initialTheme = themePreferences.currentTheme() ?: defaultDarkTheme
@@ -188,7 +191,14 @@ fun JellystackRoot(
     val playbackState by playbackController.state.collectAsState()
     val playbackDescription =
         when (val state = playbackState) {
-            is PlaybackState.Playing -> "Playing ${state.mediaId} on ${state.deviceName}"
+            is PlaybackState.Playing -> {
+                val modeLabel =
+                    when (state.source.mode) {
+                        PlaybackMode.DIRECT -> "Direct play"
+                        PlaybackMode.HLS -> "HLS"
+                    }
+                "Playing ${state.mediaId} ($modeLabel) on ${state.deviceName}"
+            }
             PlaybackState.Stopped -> "Stopped"
         }
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
@@ -210,6 +220,7 @@ fun JellystackRoot(
     var serverFormState by remember { mutableStateOf(ServerFormState()) }
     var isSavingServer by remember { mutableStateOf(false) }
     var serverErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSettingsOpen by remember { mutableStateOf(false) }
 
     val serverUiState =
         ServerManagementUiState(
@@ -221,7 +232,15 @@ fun JellystackRoot(
         )
 
     val playbackAction: (JellyfinItem, JellyfinItemDetail) -> Unit = { item, detail ->
-        playbackController.play(PlaybackRequest.from(item, detail))
+        coroutineScope.launch {
+            val environment = environmentProvider.current()
+            if (environment != null) {
+                playbackController.play(PlaybackRequest.from(item, detail), environment)
+            } else {
+                serverErrorMessage = "Connect a Jellyfin server to start playback."
+                isSettingsOpen = true
+            }
+        }
     }
 
     val onSelectLibrary: (String) -> Unit = browseCoordinator::selectLibrary
@@ -380,9 +399,6 @@ fun JellystackRoot(
     LaunchedEffect(browseState.imageBaseUrl, browseState.imageAccessToken) {
         detailState = detailState.withImageInfo(browseState.imageBaseUrl, browseState.imageAccessToken)
     }
-
-    var isSettingsOpen by remember { mutableStateOf(false) }
-
     CompositionLocalProvider(LocalThemeController provides themeController) {
         JellystackTheme(isDarkTheme = isDarkTheme) {
             Surface {
@@ -544,7 +560,14 @@ private fun JellystackPreviewRoot(
     val playbackState by controller.state.collectAsState()
     val playbackDescription =
         when (val state = playbackState) {
-            is PlaybackState.Playing -> "Playing ${state.mediaId} on ${state.deviceName}"
+            is PlaybackState.Playing -> {
+                val modeLabel =
+                    when (state.source.mode) {
+                        PlaybackMode.DIRECT -> "Direct play"
+                        PlaybackMode.HLS -> "HLS"
+                    }
+                "Playing ${state.mediaId} ($modeLabel) on ${state.deviceName}"
+            }
             PlaybackState.Stopped -> "Stopped"
         }
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }

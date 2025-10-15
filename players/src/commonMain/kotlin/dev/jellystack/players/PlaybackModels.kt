@@ -10,6 +10,8 @@ private const val TICKS_PER_MILLISECOND = 10_000L
 
 internal fun Long.toMillisFromTicks(): Long = this / TICKS_PER_MILLISECOND
 
+internal fun Long.toTicks(): Long = this * TICKS_PER_MILLISECOND
+
 internal fun ticksToMillis(value: Long?): Long? = value?.toMillisFromTicks()
 
 data class PlaybackRequest(
@@ -80,6 +82,7 @@ data class PlaybackSession(
     val audioTrack: AudioTrack?,
     val subtitleTrack: SubtitleTrack?,
     val isPaused: Boolean,
+    val source: ResolvedPlaybackSource,
 )
 
 data class PlaybackProgress(

@@ -1,13 +1,23 @@
 package dev.jellystack.players
 
 import dev.jellystack.core.currentPlatform
+import dev.jellystack.core.jellyfin.JellyfinEnvironment
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 class PlaybackController(
     private val progressStore: PlaybackProgressStore = InMemoryPlaybackProgressStore(),
     private val streamSelector: PlaybackStreamSelector = PlaybackStreamSelector(),
+    private val playbackSourceResolver: PlaybackSourceResolver = JellyfinPlaybackSourceResolver(),
+    private val playerEngine: PlayerEngine = NoopPlayerEngine(),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Stopped)
     val state: StateFlow<PlaybackState> = _state
@@ -15,14 +25,33 @@ class PlaybackController(
     private val deviceName = currentPlatform().name
     private var session: PlaybackSession? = null
     private var lastPersisted: PlaybackProgress? = null
+    private var progressJob: Job? = null
+    private var eventsJob: Job? = null
 
-    fun play(request: PlaybackRequest) {
+    suspend fun play(
+        request: PlaybackRequest,
+        environment: JellyfinEnvironment,
+    ) {
+        stopInternal(saveProgress = true)
         val selection = streamSelector.select(request.mediaSources)
         val startingPosition =
             progressStore.read(request.mediaId)?.positionMs
                 ?: ticksToMillis(request.resumePositionTicks)
                 ?: 0L
         val durationMs = ticksToMillis(request.durationTicks)
+        val source =
+            playbackSourceResolver.resolve(
+                request = request,
+                selection = selection,
+                environment = environment,
+                startPositionMs = startingPosition,
+            )
+        playerEngine.prepare(
+            source = source,
+            startPositionMs = startingPosition,
+            audioTrack = selection.defaultAudioTrack(),
+            subtitleTrack = selection.defaultSubtitleTrack(),
+        )
         val newSession =
             PlaybackSession(
                 mediaId = request.mediaId,
@@ -32,13 +61,17 @@ class PlaybackController(
                 audioTrack = selection.defaultAudioTrack(),
                 subtitleTrack = selection.defaultSubtitleTrack(),
                 isPaused = false,
+                source = source,
             )
         session = newSession
         publish(newSession)
+        playerEngine.play()
+        startCollectors()
     }
 
     fun pause() {
         session?.let {
+            playerEngine.pause()
             val updated = it.copy(isPaused = true)
             session = updated
             publish(updated)
@@ -47,6 +80,7 @@ class PlaybackController(
 
     fun resume() {
         session?.let {
+            playerEngine.play()
             val updated = it.copy(isPaused = false)
             session = updated
             publish(updated)
@@ -54,6 +88,12 @@ class PlaybackController(
     }
 
     fun stop(saveProgress: Boolean = true) {
+        stopInternal(saveProgress)
+    }
+
+    private fun stopInternal(saveProgress: Boolean) {
+        cancelCollectors()
+        playerEngine.stop()
         val current = session ?: return
         if (saveProgress) {
             if (isNearCompletion(current)) {
@@ -73,6 +113,7 @@ class PlaybackController(
             val updated = it.copy(positionMs = positionMs)
             session = updated
             publish(updated)
+            playerEngine.seekTo(positionMs)
             persistProgressIfNeeded(updated)
         }
     }
@@ -93,6 +134,7 @@ class PlaybackController(
             val updated = current.copy(subtitleTrack = subtitle)
             session = updated
             publish(updated)
+            playerEngine.setSubtitleTrack(subtitle)
         }
     }
 
@@ -102,6 +144,7 @@ class PlaybackController(
             val updated = current.copy(audioTrack = audio)
             session = updated
             publish(updated)
+            playerEngine.setAudioTrack(audio)
         }
     }
 
@@ -113,6 +156,12 @@ class PlaybackController(
     }
 
     fun currentSession(): PlaybackSession? = session
+    fun release() {
+        stopInternal(saveProgress = false)
+        _state.value = PlaybackState.Stopped
+        playerEngine.release()
+        scope.cancel()
+    }
 
     private fun publish(session: PlaybackSession) {
         _state.value =
@@ -125,6 +174,7 @@ class PlaybackController(
                 audioTrack = session.audioTrack,
                 subtitleTrack = session.subtitleTrack,
                 isPaused = session.isPaused,
+                source = session.source,
             )
     }
 
@@ -156,6 +206,39 @@ class PlaybackController(
         return session.positionMs >= (duration * COMPLETION_THRESHOLD_PERCENT).toLong()
     }
 
+    private fun startCollectors() {
+        cancelCollectors()
+        progressJob =
+            scope.launch {
+                playerEngine.positionUpdates.collect { positionMs ->
+                    updateProgress(positionMs)
+                }
+            }
+        eventsJob =
+            scope.launch {
+                playerEngine.events.collect { event ->
+                    when (event) {
+                        PlayerEvent.Completed ->
+                            session?.let {
+                                progressStore.clear(it.mediaId)
+                                stopInternal(saveProgress = false)
+                            }
+                        is PlayerEvent.Error -> {
+                            // Preserve last progress but surface stop so UI can react
+                            stopInternal(saveProgress = true)
+                        }
+                    }
+                }
+            }
+    }
+
+    private fun cancelCollectors() {
+        progressJob?.cancel()
+        eventsJob?.cancel()
+        progressJob = null
+        eventsJob = null
+    }
+
     companion object {
         private const val PROGRESS_WRITE_INTERVAL_MS = 5_000L
         private const val COMPLETION_THRESHOLD_PERCENT = 0.97
@@ -172,6 +255,7 @@ sealed interface PlaybackState {
         val audioTrack: AudioTrack?,
         val subtitleTrack: SubtitleTrack?,
         val isPaused: Boolean,
+        val source: ResolvedPlaybackSource,
     ) : PlaybackState
 
     data object Stopped : PlaybackState

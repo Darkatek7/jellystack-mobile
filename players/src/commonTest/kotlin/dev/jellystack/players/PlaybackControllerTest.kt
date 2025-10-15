@@ -1,10 +1,12 @@
 package dev.jellystack.players
 
+import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.JellyfinMediaSource
 import dev.jellystack.core.jellyfin.JellyfinMediaStream
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -12,80 +14,154 @@ import kotlin.test.assertNull
 
 class PlaybackControllerTest {
     @Test
-    fun selectsDirectH264StreamForPlayback() {
-        val controller = PlaybackController(progressStore = InMemoryPlaybackProgressStore())
+    fun selectsDirectH264StreamForPlayback() = runTest {
+        val engine = NoopPlayerEngine()
+        val controller =
+            PlaybackController(
+                progressStore = InMemoryPlaybackProgressStore(),
+                playbackSourceResolver = TestPlaybackSourceResolver(),
+                playerEngine = engine,
+            )
         val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
 
-        controller.play(request)
+        try {
+            controller.play(request, testEnvironment())
 
-        val state = controller.state.value as PlaybackState.Playing
-        assertEquals(PlaybackMode.DIRECT, state.stream.mode)
-        assertEquals("direct-source", state.stream.sourceId)
-        assertEquals("h264", state.stream.videoCodec?.lowercase())
+            val state = controller.state.value as PlaybackState.Playing
+            assertEquals(PlaybackMode.DIRECT, state.stream.mode)
+            assertEquals("direct-source", state.stream.sourceId)
+            assertEquals("h264", state.stream.videoCodec?.lowercase())
+            assertEquals(PlaybackMode.DIRECT, state.source.mode)
+        } finally {
+            controller.release()
+        }
     }
 
     @Test
-    fun exposesSubtitleTracksAndAllowsSelection() {
-        val controller = PlaybackController(progressStore = InMemoryPlaybackProgressStore())
+    fun exposesSubtitleTracksAndAllowsSelection() = runTest {
+        val engine = NoopPlayerEngine()
+        val controller =
+            PlaybackController(
+                progressStore = InMemoryPlaybackProgressStore(),
+                playbackSourceResolver = TestPlaybackSourceResolver(),
+                playerEngine = engine,
+            )
         val detail = sampleDetail(includeSrt = true, includeVtt = true, includePgs = true)
         val request = PlaybackRequest.from(sampleItem(), detail)
 
-        controller.play(request)
-        val state = controller.state.value as PlaybackState.Playing
+        try {
+            controller.play(request, testEnvironment())
+            val state = controller.state.value as PlaybackState.Playing
 
-        assertEquals(2, state.stream.subtitleTracks.size)
-        val srt = state.stream.subtitleTracks.first { it.format == SubtitleFormat.SRT }
-        controller.selectSubtitle(srt.id)
-        val updated = controller.state.value as PlaybackState.Playing
-        assertEquals(srt.id, updated.subtitleTrack?.id)
+            assertEquals(2, state.stream.subtitleTracks.size)
+            val srt = state.stream.subtitleTracks.first { it.format == SubtitleFormat.SRT }
+            controller.selectSubtitle(srt.id)
+            val updated = controller.state.value as PlaybackState.Playing
+            assertEquals(srt.id, updated.subtitleTrack?.id)
+        } finally {
+            controller.release()
+        }
     }
 
     @Test
-    fun persistsProgressAndRestoresOnNextSession() {
+    fun persistsProgressAndRestoresOnNextSession() = runTest {
         val store = InMemoryPlaybackProgressStore()
         val request = PlaybackRequest.from(sampleItem(), sampleDetail())
         assertEquals(90_000L, ticksToMillis(request.durationTicks))
 
-        val first = PlaybackController(progressStore = store)
-        first.play(request)
-        first.updateProgress(45_000L)
-        val currentSession = first.currentSession()
-        assertNotNull(currentSession)
-        assertEquals(45_000L, currentSession.positionMs)
-        assertEquals(90_000L, currentSession.durationMs)
-        val afterUpdate = store.read(request.mediaId)
-        assertNotNull(afterUpdate)
-        assertEquals(45_000L, afterUpdate.positionMs)
-        first.stop()
-        val afterFirstStop = store.read(request.mediaId)
-        assertNotNull(afterFirstStop)
-        assertEquals(45_000L, afterFirstStop.positionMs)
+        val engineOne = NoopPlayerEngine()
+        val first =
+            PlaybackController(
+                progressStore = store,
+                playbackSourceResolver = TestPlaybackSourceResolver(),
+                playerEngine = engineOne,
+            )
+        try {
+            first.play(request, testEnvironment())
+            first.updateProgress(45_000L)
+            val currentSession = first.currentSession()
+            assertNotNull(currentSession)
+            assertEquals(45_000L, currentSession.positionMs)
+            assertEquals(90_000L, currentSession.durationMs)
+            val afterUpdate = store.read(request.mediaId)
+            assertNotNull(afterUpdate)
+            assertEquals(45_000L, afterUpdate.positionMs)
+            first.stop()
+            val afterFirstStop = store.read(request.mediaId)
+            assertNotNull(afterFirstStop)
+            assertEquals(45_000L, afterFirstStop.positionMs)
+        } finally {
+            first.release()
+        }
 
-        val second = PlaybackController(progressStore = store)
-        second.play(request)
-        val restored = second.state.value as PlaybackState.Playing
-        assertEquals(45_000L, restored.positionMs)
+        val second =
+            PlaybackController(
+                progressStore = store,
+                playbackSourceResolver = TestPlaybackSourceResolver(),
+                playerEngine = NoopPlayerEngine(),
+            )
+        try {
+            second.play(request, testEnvironment())
+            val restored = second.state.value as PlaybackState.Playing
+            assertEquals(45_000L, restored.positionMs)
 
-        second.updateProgress(100_000L)
-        second.stop()
+            second.updateProgress(100_000L)
+            second.stop()
+        } finally {
+            second.release()
+        }
 
         val cleared = store.read(request.mediaId)
         assertNull(cleared)
     }
 
     @Test
-    fun clearsProgressWhenCompleted() {
+    fun clearsProgressWhenCompleted() = runTest {
         val store = InMemoryPlaybackProgressStore()
         val detail = sampleDetail(durationMs = 120_000L)
         val request = PlaybackRequest.from(sampleItem(), detail)
-        val controller = PlaybackController(progressStore = store)
+        val engine = NoopPlayerEngine()
+        val controller =
+            PlaybackController(
+                progressStore = store,
+                playbackSourceResolver = TestPlaybackSourceResolver(),
+                playerEngine = engine,
+            )
 
-        controller.play(request)
-        controller.updateProgress(120_000L)
-        controller.stop()
+        try {
+            controller.play(request, testEnvironment())
+            controller.updateProgress(120_000L)
+            controller.stop()
 
-        assertNull(store.read(request.mediaId))
+            assertNull(store.read(request.mediaId))
+        } finally {
+            controller.release()
+        }
     }
+}
+
+private fun testEnvironment(): JellyfinEnvironment =
+    JellyfinEnvironment(
+        serverKey = "server-1",
+        baseUrl = "https://demo.jellyfin.org",
+        accessToken = "token",
+        userId = "user",
+        deviceId = "device-id",
+        deviceName = "UnitTest",
+    )
+
+private class TestPlaybackSourceResolver : PlaybackSourceResolver {
+    override fun resolve(
+        request: PlaybackRequest,
+        selection: PlaybackStreamSelection,
+        environment: JellyfinEnvironment,
+        startPositionMs: Long,
+    ): ResolvedPlaybackSource =
+        ResolvedPlaybackSource(
+            url = "${environment.baseUrl}/videos/${request.mediaId}/${selection.sourceId}",
+            headers = emptyMap(),
+            mode = selection.mode,
+        )
 }
 
 private fun sampleItem(
