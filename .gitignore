@@ -19,3 +19,5 @@
 *.jks
 .DS_Store
 Thumbs.db
+/.kotlin/
+/kotlin-js-store/
