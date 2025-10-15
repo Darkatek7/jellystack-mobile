@@ -28,6 +28,10 @@ class JellyfinPlaybackSourceResolver(
                         append(environment.accessToken)
                         append("&MediaSourceId=")
                         append(selection.sourceId)
+                        append("&DeviceId=")
+                        append(environment.deviceId)
+                        append("&UserId=")
+                        append(environment.userId)
                         val startTicks = max(0, startPositionMs).toTicks()
                         if (startTicks > 0) {
                             append("&StartTimeTicks=")
@@ -45,6 +49,10 @@ class JellyfinPlaybackSourceResolver(
                         append(environment.accessToken)
                         append("&MediaSourceId=")
                         append(selection.sourceId)
+                        append("&DeviceId=")
+                        append(environment.deviceId)
+                        append("&UserId=")
+                        append(environment.userId)
                         val startTicks = max(0, startPositionMs).toTicks()
                         if (startTicks > 0) {
                             append("&StartTimeTicks=")
@@ -69,7 +77,7 @@ class JellyfinPlaybackSourceResolver(
     private fun authorizationHeader(environment: JellyfinEnvironment): String {
         val builder = StringBuilder()
         builder.append("MediaBrowser ")
-        builder.append("""Client="$clientName"""" )
+        builder.append("""Client="$clientName"""")
         builder.append(""", Device="${environment.deviceName}"""")
         builder.append(""", DeviceId="${environment.deviceId}"""")
         builder.append(""", Version="$clientVersion"""")

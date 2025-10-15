@@ -5,7 +5,10 @@ import kotlinx.coroutines.flow.emptyFlow
 
 sealed interface PlayerEvent {
     data object Completed : PlayerEvent
-    data class Error(val throwable: Throwable) : PlayerEvent
+
+    data class Error(
+        val throwable: Throwable,
+    ) : PlayerEvent
 }
 
 interface PlayerEngine {
@@ -20,11 +23,17 @@ interface PlayerEngine {
     )
 
     fun play()
+
     fun pause()
+
     fun stop()
+
     fun seekTo(positionMs: Long)
+
     fun setAudioTrack(track: AudioTrack?)
+
     fun setSubtitleTrack(track: SubtitleTrack?)
+
     fun release()
 }
 
@@ -40,10 +49,16 @@ class NoopPlayerEngine : PlayerEngine {
     ) = Unit
 
     override fun play() = Unit
+
     override fun pause() = Unit
+
     override fun stop() = Unit
+
     override fun seekTo(positionMs: Long) = Unit
+
     override fun setAudioTrack(track: AudioTrack?) = Unit
+
     override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
+
     override fun release() = Unit
 }

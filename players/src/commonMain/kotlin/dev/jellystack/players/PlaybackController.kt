@@ -17,7 +17,7 @@ class PlaybackController(
     private val streamSelector: PlaybackStreamSelector = PlaybackStreamSelector(),
     private val playbackSourceResolver: PlaybackSourceResolver = JellyfinPlaybackSourceResolver(),
     private val playerEngine: PlayerEngine = NoopPlayerEngine(),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Stopped)
     val state: StateFlow<PlaybackState> = _state
@@ -156,6 +156,7 @@ class PlaybackController(
     }
 
     fun currentSession(): PlaybackSession? = session
+
     fun release() {
         stopInternal(saveProgress = false)
         _state.value = PlaybackState.Stopped
@@ -191,7 +192,10 @@ class PlaybackController(
         }
     }
 
-    private fun persistProgress(mediaId: String, positionMs: Long) {
+    private fun persistProgress(
+        mediaId: String,
+        positionMs: Long,
+    ) {
         persist(PlaybackProgress(mediaId, positionMs))
     }
 

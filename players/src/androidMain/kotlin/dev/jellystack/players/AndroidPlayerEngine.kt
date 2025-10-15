@@ -6,10 +6,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,39 +23,45 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@UnstableApi
 class AndroidPlayerEngine(
     context: Context,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
     private val player =
-        ExoPlayer.Builder(context)
+        ExoPlayer
+            .Builder(context)
             .build()
             .apply {
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_ENDED) {
-                            scope.launch { _events.emit(PlayerEvent.Completed) }
+                addListener(
+                    object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                scope.launch { eventFlow.emit(PlayerEvent.Completed) }
+                            }
                         }
-                    }
 
-                    override fun onPlayerError(error: PlaybackException) {
-                        scope.launch { _events.emit(PlayerEvent.Error(error)) }
-                    }
-                })
+                        override fun onPlayerError(error: PlaybackException) {
+                            scope.launch { eventFlow.emit(PlayerEvent.Error(error)) }
+                        }
+                    },
+                )
             }
 
-    private val _positions = MutableSharedFlow<Long>(replay = 1)
-    private val _events = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 4)
-    private var positionJob = scope.launch {
-        while (isActive) {
-            _positions.emit(player.currentPosition)
-            delay(POSITION_POLL_INTERVAL_MS)
+    private val positionFlow = MutableSharedFlow<Long>(replay = 1)
+    private val eventFlow = MutableSharedFlow<PlayerEvent>(extraBufferCapacity = 4)
+    private var positionJob =
+        scope.launch {
+            while (isActive) {
+                positionFlow.emit(player.currentPosition)
+                delay(POSITION_POLL_INTERVAL_MS)
+            }
         }
-    }
 
-    override val positionUpdates: SharedFlow<Long> = _positions.asSharedFlow()
-    override val events: SharedFlow<PlayerEvent> = _events.asSharedFlow()
+    override val positionUpdates: SharedFlow<Long> = positionFlow.asSharedFlow()
+    override val events: SharedFlow<PlayerEvent> = eventFlow.asSharedFlow()
 
+    @UnstableApi
     override suspend fun prepare(
         source: ResolvedPlaybackSource,
         startPositionMs: Long,
@@ -63,12 +70,13 @@ class AndroidPlayerEngine(
     ) {
         withContext(Dispatchers.Main) {
             val dataSourceFactory =
-                DefaultHttpDataSource.Factory()
-                    .setAllowCrossProtocolRedirects(true)
+                DefaultHttpDataSource
+                    .Factory()
                     .setDefaultRequestProperties(source.headers)
 
             val mediaItem =
-                MediaItem.Builder()
+                MediaItem
+                    .Builder()
                     .setUri(Uri.parse(source.url))
                     .apply {
                         when (source.mode) {
@@ -82,11 +90,13 @@ class AndroidPlayerEngine(
             val mediaSource =
                 when (source.mode) {
                     PlaybackMode.DIRECT ->
-                        ProgressiveMediaSource.Factory(dataSourceFactory)
+                        ProgressiveMediaSource
+                            .Factory(dataSourceFactory)
                             .createMediaSource(mediaItem)
 
                     PlaybackMode.HLS ->
-                        HlsMediaSource.Factory(dataSourceFactory)
+                        HlsMediaSource
+                            .Factory(dataSourceFactory)
                             .createMediaSource(mediaItem)
                 }
 

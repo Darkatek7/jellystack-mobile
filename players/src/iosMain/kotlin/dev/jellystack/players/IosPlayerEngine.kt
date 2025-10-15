@@ -21,13 +21,18 @@ class IosPlayerEngine : PlayerEngine {
     }
 
     override fun play() = Unit
+
     override fun pause() = Unit
+
     override fun stop() = Unit
+
     override fun seekTo(positionMs: Long) {
         positions.tryEmit(positionMs)
     }
 
     override fun setAudioTrack(track: AudioTrack?) = Unit
+
     override fun setSubtitleTrack(track: SubtitleTrack?) = Unit
+
     override fun release() = Unit
 }

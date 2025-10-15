@@ -65,7 +65,11 @@ class PlaybackStreamSelector {
     private fun resolutionScore(stream: JellyfinMediaStream): Int {
         val resolution =
             stream.displayTitle?.let { title ->
-                RESOLUTION_REGEX.find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                RESOLUTION_REGEX
+                    .find(title)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.toIntOrNull()
             }
         return resolution ?: 0
     }

@@ -66,7 +66,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.russhwolf.settings.Settings
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
@@ -88,11 +87,12 @@ import dev.jellystack.design.jellyfin.buildSeasonEpisodes
 import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
 import dev.jellystack.design.theme.ThemeController
+import dev.jellystack.players.AudioTrack
 import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackMode
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackState
-import dev.jellystack.players.SettingsPlaybackProgressStore
+import dev.jellystack.players.SubtitleTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -178,7 +178,7 @@ fun JellystackRoot(
     val koin = remember { JellystackDI.koin }
     val playbackController =
         remember(controller, koin) {
-            controller ?: PlaybackController(SettingsPlaybackProgressStore(koin.get<Settings>()))
+            controller ?: PlaybackController()
         }
     val themePreferences = remember(koin) { koin.get<ThemePreferenceRepository>() }
     val environmentProvider = remember(koin) { koin.get<JellyfinEnvironmentProvider>() }
@@ -221,6 +221,11 @@ fun JellystackRoot(
     var isSavingServer by remember { mutableStateOf(false) }
     var serverErrorMessage by remember { mutableStateOf<String?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+    val activePlaybackForDetail =
+        (playbackState as? PlaybackState.Playing)?.takeIf {
+            val loaded = detailState as? JellyfinDetailUiState.Loaded
+            loaded != null && it.mediaId == loaded.detail.id
+        }
 
     val serverUiState =
         ServerManagementUiState(
@@ -515,6 +520,12 @@ fun JellystackRoot(
                                 libraryItems = browseState.libraryItems,
                                 onRetry = onRetryDetail,
                                 onPlay = playbackAction,
+                                audioTracks = activePlaybackForDetail?.stream?.audioTracks ?: emptyList(),
+                                selectedAudioTrack = activePlaybackForDetail?.audioTrack,
+                                onSelectAudioTrack = { track -> playbackController.selectAudioTrack(track.id) },
+                                subtitleTracks = activePlaybackForDetail?.stream?.subtitleTracks ?: emptyList(),
+                                selectedSubtitleTrack = activePlaybackForDetail?.subtitleTrack,
+                                onSelectSubtitleTrack = { track -> playbackController.selectSubtitle(track?.id) },
                                 modifier = Modifier.padding(padding),
                             )
                     }
@@ -842,6 +853,12 @@ private fun DetailContent(
     libraryItems: List<JellyfinItem>,
     onRetry: () -> Unit,
     onPlay: (JellyfinItem, JellyfinItemDetail) -> Unit,
+    audioTracks: List<AudioTrack> = emptyList(),
+    selectedAudioTrack: AudioTrack? = null,
+    onSelectAudioTrack: (AudioTrack) -> Unit = {},
+    subtitleTracks: List<SubtitleTrack> = emptyList(),
+    selectedSubtitleTrack: SubtitleTrack? = null,
+    onSelectSubtitleTrack: (SubtitleTrack?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -892,6 +909,12 @@ private fun DetailContent(
                 seasons = seasonGroups,
                 onPlay = { onPlay(state.item, state.detail) },
                 onQueueDownload = {},
+                audioTracks = audioTracks,
+                selectedAudioTrack = selectedAudioTrack,
+                onSelectAudioTrack = onSelectAudioTrack,
+                subtitleTracks = subtitleTracks,
+                selectedSubtitleTrack = selectedSubtitleTrack,
+                onSelectSubtitleTrack = onSelectSubtitleTrack,
                 modifier = modifier.fillMaxSize(),
             )
         }

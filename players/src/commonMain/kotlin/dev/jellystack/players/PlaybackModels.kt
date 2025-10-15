@@ -21,7 +21,10 @@ data class PlaybackRequest(
     val durationTicks: Long? = null,
 ) {
     companion object {
-        fun from(item: JellyfinItem, detail: JellyfinItemDetail): PlaybackRequest =
+        fun from(
+            item: JellyfinItem,
+            detail: JellyfinItemDetail,
+        ): PlaybackRequest =
             PlaybackRequest(
                 mediaId = item.id,
                 mediaSources = detail.mediaSources,

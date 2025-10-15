@@ -13,9 +13,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            val controller = remember {
-                PlaybackController(playerEngine = AndroidPlayerEngine(applicationContext))
-            }
+            val controller =
+                remember {
+                    PlaybackController(playerEngine = AndroidPlayerEngine(applicationContext))
+                }
             DisposableEffect(Unit) {
                 onDispose { controller.release() }
             }

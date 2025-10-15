@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,6 +61,8 @@ import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.JellyfinLibrary
+import dev.jellystack.players.AudioTrack
+import dev.jellystack.players.SubtitleTrack
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -452,9 +456,9 @@ private fun formatEpisodeLabel(
     val hasSeason = seasonNumber != null && seasonNumber > 0
     val hasEpisode = episodeNumber != null && episodeNumber > 0
     return when {
-        hasSeason && hasEpisode -> "S${seasonNumber} • E${episodeNumber}"
-        hasEpisode -> "Episode ${episodeNumber}"
-        hasSeason -> "Season ${seasonNumber}"
+        hasSeason && hasEpisode -> "S$seasonNumber • E$episodeNumber"
+        hasEpisode -> "Episode $episodeNumber"
+        hasSeason -> "Season $seasonNumber"
         else -> null
     }
 }
@@ -943,6 +947,17 @@ private fun episodeLabel(item: JellyfinItem): String {
     return parts.joinToString(" · ").ifBlank { item.name }
 }
 
+private fun audioTrackLabel(track: AudioTrack): String =
+    track.title?.takeIf { it.isNotBlank() }
+        ?: track.language?.takeIf { it.isNotBlank() }?.uppercase()
+        ?: track.codec?.uppercase()
+        ?: track.id
+
+private fun subtitleTrackLabel(track: SubtitleTrack): String =
+    track.title?.takeIf { it.isNotBlank() }
+        ?: track.language?.takeIf { it.isNotBlank() }?.uppercase()
+        ?: track.format.name
+
 private data class MutableTvSeriesGroup(
     val key: String,
     var series: JellyfinItem? = null,
@@ -1351,6 +1366,7 @@ private fun LoadMoreListener(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun JellyfinDetailContent(
     detail: JellyfinItemDetail,
     baseUrl: String?,
@@ -1358,6 +1374,12 @@ internal fun JellyfinDetailContent(
     seasons: List<SeasonEpisodes>,
     onPlay: () -> Unit,
     onQueueDownload: () -> Unit,
+    audioTracks: List<AudioTrack> = emptyList(),
+    selectedAudioTrack: AudioTrack? = null,
+    onSelectAudioTrack: (AudioTrack) -> Unit = {},
+    subtitleTracks: List<SubtitleTrack> = emptyList(),
+    selectedSubtitleTrack: SubtitleTrack? = null,
+    onSelectSubtitleTrack: (SubtitleTrack?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -1392,6 +1414,51 @@ internal fun JellyfinDetailContent(
             }
             OutlinedButton(onClick = onQueueDownload) {
                 Text(text = "Download")
+            }
+        }
+        if (audioTracks.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Audio tracks",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    audioTracks.forEach { track ->
+                        FilterChip(
+                            selected = selectedAudioTrack?.id == track.id,
+                            onClick = { onSelectAudioTrack(track) },
+                            label = { Text(audioTrackLabel(track)) },
+                        )
+                    }
+                }
+            }
+        }
+        if (subtitleTracks.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Subtitles",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = selectedSubtitleTrack == null,
+                        onClick = { onSelectSubtitleTrack(null) },
+                        label = { Text("Off") },
+                    )
+                    subtitleTracks.forEach { track ->
+                        FilterChip(
+                            selected = selectedSubtitleTrack?.id == track.id,
+                            onClick = { onSelectSubtitleTrack(track) },
+                            label = { Text(subtitleTrackLabel(track)) },
+                        )
+                    }
+                }
             }
         }
         if (detail.taglines.isNotEmpty()) {
