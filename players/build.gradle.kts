@@ -23,11 +23,13 @@ kotlin {
                 implementation(projects.sharedCore)
                 implementation(projects.sharedNetwork)
                 implementation(libs.coroutines.core)
+                implementation(libs.multiplatform.settings)
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+                implementation(libs.multiplatform.settings)
             }
         }
     }

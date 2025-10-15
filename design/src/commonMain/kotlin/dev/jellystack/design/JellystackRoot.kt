@@ -66,6 +66,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.russhwolf.settings.Settings
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
@@ -87,7 +88,9 @@ import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
 import dev.jellystack.design.theme.ThemeController
 import dev.jellystack.players.PlaybackController
+import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.SettingsPlaybackProgressStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -163,14 +166,18 @@ private data class ServerManagementUiState(
 @Composable
 fun JellystackRoot(
     defaultDarkTheme: Boolean = false,
-    controller: PlaybackController = PlaybackController(),
+    controller: PlaybackController? = null,
 ) {
     if (!JellystackDI.isStarted()) {
-        JellystackPreviewRoot(defaultDarkTheme, controller)
+        JellystackPreviewRoot(defaultDarkTheme, controller ?: PlaybackController())
         return
     }
 
     val koin = remember { JellystackDI.koin }
+    val playbackController =
+        remember(controller, koin) {
+            controller ?: PlaybackController(SettingsPlaybackProgressStore(koin.get<Settings>()))
+        }
     val themePreferences = remember(koin) { koin.get<ThemePreferenceRepository>() }
     val themeController =
         remember(themePreferences, defaultDarkTheme) {
@@ -178,7 +185,7 @@ fun JellystackRoot(
             ThemeController(initialTheme, onThemeChanged = themePreferences::setDarkTheme)
         }
     val isDarkTheme by themeController.isDark.collectAsState()
-    val playbackState by controller.state.collectAsState()
+    val playbackState by playbackController.state.collectAsState()
     val playbackDescription =
         when (val state = playbackState) {
             is PlaybackState.Playing -> "Playing ${state.mediaId} on ${state.deviceName}"
@@ -213,7 +220,9 @@ fun JellystackRoot(
             errorMessage = serverErrorMessage,
         )
 
-    val playbackAction: (JellyfinItemDetail) -> Unit = { detail -> controller.play(detail.id) }
+    val playbackAction: (JellyfinItem, JellyfinItemDetail) -> Unit = { item, detail ->
+        playbackController.play(PlaybackRequest.from(item, detail))
+    }
 
     val onSelectLibrary: (String) -> Unit = browseCoordinator::selectLibrary
     val onRefreshLibraries: () -> Unit = { browseCoordinator.bootstrap(forceRefresh = true) }
@@ -654,7 +663,7 @@ private fun JellystackPreviewRoot(
                                 state = detailState,
                                 libraryItems = browseState.libraryItems,
                                 onRetry = {},
-                                onPlay = {},
+                                onPlay = { _, _ -> },
                                 modifier = Modifier.padding(padding),
                             )
                     }
@@ -809,7 +818,7 @@ private fun DetailContent(
     state: JellyfinDetailUiState,
     libraryItems: List<JellyfinItem>,
     onRetry: () -> Unit,
-    onPlay: (JellyfinItemDetail) -> Unit,
+    onPlay: (JellyfinItem, JellyfinItemDetail) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (state) {
@@ -858,7 +867,7 @@ private fun DetailContent(
                 baseUrl = state.imageBaseUrl,
                 accessToken = state.imageAccessToken,
                 seasons = seasonGroups,
-                onPlay = { onPlay(state.detail) },
+                onPlay = { onPlay(state.item, state.detail) },
                 onQueueDownload = {},
                 modifier = modifier.fillMaxSize(),
             )
