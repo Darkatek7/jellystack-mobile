@@ -412,81 +412,36 @@ private fun ContinueWatchingCard(
                 )
             }
         }
-        Box(
+        val isEpisode = item.type.equals("Episode", ignoreCase = true)
+        val primaryText =
+            when {
+                isEpisode -> item.seriesName ?: item.name
+                else -> item.name
+            }
+        val secondaryText =
+            if (isEpisode) {
+                formatEpisodeLabel(
+                    seasonNumber = item.parentIndexNumber,
+                    episodeNumber = item.indexNumber,
+                )
+            } else {
+                item.officialRating?.takeIf { it.isNotBlank() }
+            }
+        val tertiaryText =
+            if (isEpisode) {
+                item.episodeTitle?.takeIf { it.isNotBlank() } ?: item.name
+            } else {
+                item.productionYear?.takeIf { it > 0 }?.toString()
+            }
+        MediaCardMetadata(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(132.dp),
-        ) {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-            val isEpisode = item.type.equals("Episode", ignoreCase = true)
-            val primaryText =
-                when {
-                    isEpisode -> item.seriesName ?: item.name
-                    else -> item.name
-                }
-            val secondaryText =
-                if (isEpisode) {
-                    formatEpisodeLabel(
-                        seasonNumber = item.parentIndexNumber,
-                        episodeNumber = item.indexNumber,
-                    )
-                } else {
-                    item.officialRating?.takeIf { it.isNotBlank() }
-                }
-            val tertiaryText =
-                if (isEpisode) {
-                    item.episodeTitle?.takeIf { it.isNotBlank() } ?: item.name
-                } else {
-                    item.productionYear?.takeIf { it > 0 }?.toString()
-                }
-            Text(
-                text = primaryText,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 2,
-                minLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(20.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    secondaryText?.let { text ->
-                        Text(
-                            text = text,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(36.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    tertiaryText?.let { text ->
-                        Text(
-                            text = text,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
+            primaryText = primaryText,
+            secondaryText = secondaryText,
+            tertiaryText = tertiaryText,
+        )
     }
 }
 
@@ -556,7 +511,7 @@ private fun NextUpCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.width(148.dp),
+        modifier = modifier.width(160.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
@@ -578,56 +533,81 @@ private fun NextUpCard(
             logoImageItemId = item.parentId ?: item.seriesId,
             logoTag = item.parentLogoImageTag,
         )
-        Column(
+        val isEpisode = item.type.equals("Episode", ignoreCase = true)
+        val primaryText =
+            when {
+                isEpisode -> item.seriesName ?: item.name
+                else -> item.name
+            }
+        val secondaryText =
+            if (isEpisode) {
+                formatEpisodeLabel(
+                    seasonNumber = item.parentIndexNumber,
+                    episodeNumber = item.indexNumber,
+                )
+            } else {
+                item.officialRating?.takeIf { it.isNotBlank() }
+            }
+        val tertiaryText =
+            if (isEpisode) {
+                item.episodeTitle?.takeIf { it.isNotBlank() } ?: item.name
+            } else {
+                item.productionYear?.takeIf { it > 0 }?.toString()
+            }
+        MediaCardMetadata(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .height(132.dp),
+            primaryText = primaryText,
+            secondaryText = secondaryText,
+            tertiaryText = tertiaryText,
+        )
+    }
+}
+
+@Composable
+private fun MediaCardMetadata(
+    primaryText: String,
+    secondaryText: String?,
+    tertiaryText: String?,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
                     .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            val isEpisode = item.type.equals("Episode", ignoreCase = true)
-            val primaryText =
-                when {
-                    isEpisode -> item.seriesName ?: item.name
-                    else -> item.name
-                }
-            val secondaryText =
-                if (isEpisode) {
-                    formatEpisodeLabel(
-                        seasonNumber = item.parentIndexNumber,
-                        episodeNumber = item.indexNumber,
-                    )
-                } else {
-                    item.officialRating?.takeIf { it.isNotBlank() }
-                }
-            val tertiaryText =
-                if (isEpisode) {
-                    item.episodeTitle?.takeIf { it.isNotBlank() } ?: item.name
-                } else {
-                    item.productionYear?.takeIf { it > 0 }?.toString()
-                }
             Text(
                 text = primaryText,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
+                minLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            secondaryText?.let { text ->
+            if (secondaryText != null) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = text,
+                    text = secondaryText,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
+                    minLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            tertiaryText?.let { text ->
+            if (tertiaryText != null) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = text,
+                    text = tertiaryText,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
+                    minLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Spacer(modifier = Modifier.weight(1f, fill = true))
         }
     }
 }
