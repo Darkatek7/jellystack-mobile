@@ -19,7 +19,7 @@ Jellystack Mobile is a Kotlin Multiplatform application that targets Android and
 
 ## Build prerequisites
 
-- JDK 21+
+- JDK 17
 - Android SDK with API level 35 platform tools
 - Xcode 15+ for iOS builds
 
