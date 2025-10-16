@@ -293,6 +293,7 @@ private fun JellyfinMediaSourceDto.toDomain(): JellyfinMediaSource =
         container = container,
         videoBitrate = videoBitrate,
         supportsDirectPlay = supportsDirectPlay ?: false,
+        supportsDirectStream = supportsDirectStream ?: false,
         supportsTranscoding = supportsTranscoding ?: false,
         streams = mediaStreams.map { it.toDomain() },
     )

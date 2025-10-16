@@ -303,6 +303,8 @@ data class JellyfinMediaSourceDto(
     val videoBitrate: Int? = null,
     @SerialName("SupportsDirectPlay")
     val supportsDirectPlay: Boolean? = null,
+    @SerialName("SupportsDirectStream")
+    val supportsDirectStream: Boolean? = null,
     @SerialName("SupportsTranscoding")
     val supportsTranscoding: Boolean? = null,
     @SerialName("MediaStreams")

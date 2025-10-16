@@ -6,6 +6,14 @@ import dev.jellystack.core.jellyfin.JellyfinMediaStreamType
 
 private val RESOLUTION_REGEX = Regex("(\\d{3,4})p", RegexOption.IGNORE_CASE)
 
+private val SUPPORTED_DIRECT_VIDEO_CODECS =
+    setOf(
+        "h264",
+        "h265",
+        "hevc",
+        "av1",
+    )
+
 class PlaybackStreamSelector {
     fun select(mediaSources: List<JellyfinMediaSource>): PlaybackStreamSelection {
         require(mediaSources.isNotEmpty()) { "Playback requires at least one media source." }
@@ -13,10 +21,10 @@ class PlaybackStreamSelector {
         val directCandidate =
             mediaSources
                 .asSequence()
-                .filter { it.supportsDirectPlay }
+                .filter { it.supportsDirectPlay || it.supportsDirectStream }
                 .mapNotNull { source ->
                     val videoStream = source.streams.firstOrNull { it.type == JellyfinMediaStreamType.VIDEO }
-                    if (videoStream?.codec?.equals("h264", ignoreCase = true) == true) {
+                    if (videoStream?.codec?.let { it.lowercase() in SUPPORTED_DIRECT_VIDEO_CODECS } == true) {
                         Triple(source, videoStream, resolutionScore(videoStream))
                     } else {
                         null

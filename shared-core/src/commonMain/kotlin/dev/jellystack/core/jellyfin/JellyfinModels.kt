@@ -65,6 +65,7 @@ data class JellyfinMediaSource(
     val container: String?,
     val videoBitrate: Int?,
     val supportsDirectPlay: Boolean,
+    val supportsDirectStream: Boolean,
     val supportsTranscoding: Boolean,
     val streams: List<JellyfinMediaStream>,
 )

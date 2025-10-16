@@ -46,6 +46,94 @@ class PlaybackControllerTest {
         }
 
     @Test
+    fun selectsDirectHevcStreamForPlayback() =
+        runTest {
+            val engine = NoopPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher())
+            val controller =
+                PlaybackController(
+                    progressStore = InMemoryPlaybackProgressStore(),
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true, directCodec = "hevc"))
+
+            try {
+                controller.play(request, testEnvironment())
+
+                val state = controller.state.value as PlaybackState.Playing
+                assertEquals(PlaybackMode.DIRECT, state.stream.mode)
+                assertEquals("direct-source", state.stream.sourceId)
+                assertEquals("hevc", state.stream.videoCodec?.lowercase())
+                assertEquals(PlaybackMode.DIRECT, state.source.mode)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun selectsDirectAv1StreamForPlayback() =
+        runTest {
+            val engine = NoopPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher())
+            val controller =
+                PlaybackController(
+                    progressStore = InMemoryPlaybackProgressStore(),
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true, directCodec = "av1"))
+
+            try {
+                controller.play(request, testEnvironment())
+
+                val state = controller.state.value as PlaybackState.Playing
+                assertEquals(PlaybackMode.DIRECT, state.stream.mode)
+                assertEquals("direct-source", state.stream.sourceId)
+                assertEquals("av1", state.stream.videoCodec?.lowercase())
+                assertEquals(PlaybackMode.DIRECT, state.source.mode)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
+    fun selectsDirectStreamWhenDirectPlayFlagMissing() =
+        runTest {
+            val engine = NoopPlayerEngine()
+            val controllerScope = TestScope(UnconfinedTestDispatcher())
+            val controller =
+                PlaybackController(
+                    progressStore = InMemoryPlaybackProgressStore(),
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = engine,
+                    scope = controllerScope,
+                )
+            val request =
+                PlaybackRequest.from(
+                    sampleItem(),
+                    sampleDetail(
+                        withDirect = true,
+                        directSupportsDirectPlay = false,
+                        directSupportsDirectStream = true,
+                    ),
+                )
+
+            try {
+                controller.play(request, testEnvironment())
+
+                val state = controller.state.value as PlaybackState.Playing
+                assertEquals(PlaybackMode.DIRECT, state.stream.mode)
+                assertEquals("direct-source", state.stream.sourceId)
+                assertEquals(PlaybackMode.DIRECT, state.source.mode)
+            } finally {
+                controller.release()
+            }
+        }
+
+    @Test
     fun exposesSubtitleTracksAndAllowsSelection() =
         runTest {
             val engine = NoopPlayerEngine()
@@ -222,6 +310,9 @@ private fun sampleItem(
 
 private fun sampleDetail(
     withDirect: Boolean = false,
+    directCodec: String = "h264",
+    directSupportsDirectPlay: Boolean = true,
+    directSupportsDirectStream: Boolean = false,
     includeSrt: Boolean = false,
     includeVtt: Boolean = false,
     includePgs: Boolean = false,
@@ -246,6 +337,7 @@ private fun sampleDetail(
             mediaSource(
                 id = "hls-source",
                 supportsDirectPlay = false,
+                supportsDirectStream = false,
                 supportsTranscoding = true,
                 streams = baseStreams.toList(),
             ),
@@ -254,11 +346,12 @@ private fun sampleDetail(
         sources +=
             mediaSource(
                 id = "direct-source",
-                supportsDirectPlay = true,
+                supportsDirectPlay = directSupportsDirectPlay,
+                supportsDirectStream = directSupportsDirectStream,
                 supportsTranscoding = true,
                 streams =
                     listOf(
-                        videoStream(displayTitle = "1080p", codec = "h264"),
+                        videoStream(displayTitle = "1080p", codec = directCodec),
                         audioStream(index = 10, language = "en", isDefault = true),
                     ),
             )
@@ -284,6 +377,7 @@ private fun sampleDetail(
 private fun mediaSource(
     id: String,
     supportsDirectPlay: Boolean,
+    supportsDirectStream: Boolean,
     supportsTranscoding: Boolean,
     streams: List<JellyfinMediaStream>,
 ): JellyfinMediaSource =
@@ -294,6 +388,7 @@ private fun mediaSource(
         container = "mp4",
         videoBitrate = 8_000_000,
         supportsDirectPlay = supportsDirectPlay,
+        supportsDirectStream = supportsDirectStream,
         supportsTranscoding = supportsTranscoding,
         streams = streams,
     )
