@@ -92,6 +92,7 @@ import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackMode
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.PlaybackStreamSelector
 import dev.jellystack.players.SubtitleTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -206,6 +207,7 @@ fun JellystackRoot(
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
     var detailJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val streamSelector = remember { PlaybackStreamSelector() }
 
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
     val serverRepository = remember { koin.get<ServerRepository>() }
@@ -227,6 +229,48 @@ fun JellystackRoot(
             loaded != null && it.mediaId == loaded.detail.id
         }
 
+    val derivedSelection =
+        remember(detailState, streamSelector) {
+            val loaded = detailState as? JellyfinDetailUiState.Loaded ?: return@remember null
+            if (loaded.detail.mediaSources.isEmpty()) {
+                null
+            } else {
+                runCatching { streamSelector.select(loaded.detail.mediaSources) }.getOrNull()
+            }
+        }
+
+    var preferredAudioTrackId by remember { mutableStateOf<String?>(null) }
+    var preferredSubtitleTrackId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(derivedSelection?.sourceId) {
+        preferredAudioTrackId = derivedSelection?.audioTracks?.defaultAudioTrackId()
+        preferredSubtitleTrackId = derivedSelection?.subtitleTracks?.defaultSubtitleTrackId()
+    }
+
+    LaunchedEffect(activePlaybackForDetail) {
+        val playback = activePlaybackForDetail ?: return@LaunchedEffect
+        preferredAudioTrackId = playback.audioTrack?.id
+        preferredSubtitleTrackId = playback.subtitleTrack?.id
+    }
+
+    val availableAudioTracks =
+        activePlaybackForDetail?.stream?.audioTracks
+            ?: derivedSelection?.audioTracks
+            ?: emptyList()
+
+    val availableSubtitleTracks =
+        activePlaybackForDetail?.stream?.subtitleTracks
+            ?: derivedSelection?.subtitleTracks
+            ?: emptyList()
+
+    val selectedAudioTrack =
+        activePlaybackForDetail?.audioTrack
+            ?: availableAudioTracks.firstOrNull { it.id == preferredAudioTrackId }
+
+    val selectedSubtitleTrack =
+        activePlaybackForDetail?.subtitleTrack
+            ?: availableSubtitleTracks.firstOrNull { it.id == preferredSubtitleTrackId }
+
     val serverUiState =
         ServerManagementUiState(
             servers = managedServers,
@@ -237,10 +281,17 @@ fun JellystackRoot(
         )
 
     val playbackAction: (JellyfinItem, JellyfinItemDetail) -> Unit = { item, detail ->
+        val pendingAudio = preferredAudioTrackId
+        val pendingSubtitle = preferredSubtitleTrackId
+        val hasSubtitleOptions = availableSubtitleTracks.isNotEmpty()
         coroutineScope.launch {
             val environment = environmentProvider.current()
             if (environment != null) {
                 playbackController.play(PlaybackRequest.from(item, detail), environment)
+                pendingAudio?.let { playbackController.selectAudioTrack(it) }
+                if (hasSubtitleOptions || pendingSubtitle != null) {
+                    playbackController.selectSubtitle(pendingSubtitle)
+                }
             } else {
                 serverErrorMessage = "Connect a Jellyfin server to start playback."
                 isSettingsOpen = true
@@ -520,12 +571,22 @@ fun JellystackRoot(
                                 libraryItems = browseState.libraryItems,
                                 onRetry = onRetryDetail,
                                 onPlay = playbackAction,
-                                audioTracks = activePlaybackForDetail?.stream?.audioTracks ?: emptyList(),
-                                selectedAudioTrack = activePlaybackForDetail?.audioTrack,
-                                onSelectAudioTrack = { track -> playbackController.selectAudioTrack(track.id) },
-                                subtitleTracks = activePlaybackForDetail?.stream?.subtitleTracks ?: emptyList(),
-                                selectedSubtitleTrack = activePlaybackForDetail?.subtitleTrack,
-                                onSelectSubtitleTrack = { track -> playbackController.selectSubtitle(track?.id) },
+                                audioTracks = availableAudioTracks,
+                                selectedAudioTrack = selectedAudioTrack,
+                                onSelectAudioTrack = { track ->
+                                    preferredAudioTrackId = track.id
+                                    if (activePlaybackForDetail != null) {
+                                        playbackController.selectAudioTrack(track.id)
+                                    }
+                                },
+                                subtitleTracks = availableSubtitleTracks,
+                                selectedSubtitleTrack = selectedSubtitleTrack,
+                                onSelectSubtitleTrack = { track ->
+                                    preferredSubtitleTrackId = track?.id
+                                    if (activePlaybackForDetail != null) {
+                                        playbackController.selectSubtitle(track?.id)
+                                    }
+                                },
                                 modifier = Modifier.padding(padding),
                             )
                     }
@@ -952,6 +1013,10 @@ private fun findEpisodesForDetail(
             matchesName || matchesId
         }.toList()
 }
+
+private fun List<AudioTrack>.defaultAudioTrackId(): String? = firstOrNull { it.isDefault }?.id ?: firstOrNull()?.id
+
+private fun List<SubtitleTrack>.defaultSubtitleTrackId(): String? = firstOrNull { it.isDefault }?.id ?: firstOrNull { !it.isForced }?.id
 
 @Suppress("FunctionName")
 @Composable
