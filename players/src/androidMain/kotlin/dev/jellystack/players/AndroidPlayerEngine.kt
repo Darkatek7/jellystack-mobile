@@ -79,12 +79,13 @@ class AndroidPlayerEngine(
                     .Builder()
                     .setUri(Uri.parse(source.url))
                     .apply {
-                        when (source.mode) {
-                            PlaybackMode.DIRECT ->
-                                setMimeType(MimeTypes.VIDEO_MP4)
-                            PlaybackMode.HLS ->
-                                setMimeType(MimeTypes.APPLICATION_M3U8)
-                        }
+                        val mimeType =
+                            source.mimeType
+                                ?: when (source.mode) {
+                                    PlaybackMode.DIRECT -> MimeTypes.VIDEO_MP4
+                                    PlaybackMode.HLS -> MimeTypes.APPLICATION_M3U8
+                                }
+                        setMimeType(mimeType)
                     }.build()
 
             val mediaSource =

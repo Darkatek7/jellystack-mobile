@@ -268,6 +268,11 @@ private class TestPlaybackSourceResolver : PlaybackSourceResolver {
             url = "${environment.baseUrl}/videos/${request.mediaId}/${selection.sourceId}",
             headers = emptyMap(),
             mode = selection.mode,
+            mimeType =
+                when (selection.mode) {
+                    PlaybackMode.DIRECT -> "video/mp4"
+                    PlaybackMode.HLS -> "application/vnd.apple.mpegurl"
+                },
         )
 }
 

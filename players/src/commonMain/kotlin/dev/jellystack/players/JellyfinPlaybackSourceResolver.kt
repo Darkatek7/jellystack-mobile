@@ -14,7 +14,7 @@ class JellyfinPlaybackSourceResolver(
         startPositionMs: Long,
     ): ResolvedPlaybackSource {
         val baseUrl = environment.baseUrl.trimEnd('/')
-        val url =
+        val (url, mimeType) =
             when (selection.mode) {
                 PlaybackMode.DIRECT ->
                     buildString {
@@ -37,7 +37,7 @@ class JellyfinPlaybackSourceResolver(
                             append("&StartTimeTicks=")
                             append(startTicks)
                         }
-                    }
+                    } to containerMimeType(selection.container)
 
                 PlaybackMode.HLS ->
                     buildString {
@@ -53,7 +53,7 @@ class JellyfinPlaybackSourceResolver(
                         append(environment.deviceId)
                         append("&UserId=")
                         append(environment.userId)
-                    }
+                    } to HLS_MIME_TYPE
             }
 
         val headers =
@@ -66,8 +66,20 @@ class JellyfinPlaybackSourceResolver(
             url = url,
             headers = headers,
             mode = selection.mode,
+            mimeType = mimeType,
         )
     }
+
+    private fun containerMimeType(container: String?): String =
+        when (container?.lowercase()) {
+            "mp4", "m4v" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "webm" -> "video/webm"
+            "mov" -> "video/quicktime"
+            "ts", "mpegts", "m2ts" -> "video/mp2t"
+            "avi" -> "video/x-msvideo"
+            else -> "video/mp4"
+        }
 
     private fun authorizationHeader(environment: JellyfinEnvironment): String {
         val builder = StringBuilder()
@@ -80,5 +92,9 @@ class JellyfinPlaybackSourceResolver(
             builder.append(""", Token="${environment.accessToken}"""")
         }
         return builder.toString()
+    }
+
+    private companion object {
+        private const val HLS_MIME_TYPE = "application/vnd.apple.mpegurl"
     }
 }

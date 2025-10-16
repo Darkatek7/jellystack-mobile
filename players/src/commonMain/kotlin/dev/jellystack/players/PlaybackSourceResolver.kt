@@ -6,6 +6,7 @@ data class ResolvedPlaybackSource(
     val url: String,
     val headers: Map<String, String>,
     val mode: PlaybackMode,
+    val mimeType: String?,
 )
 
 fun interface PlaybackSourceResolver {
