@@ -2,6 +2,8 @@ package dev.jellystack.players
 
 import android.content.Context
 import android.net.Uri
+import android.view.View
+import android.view.ViewGroup
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -11,6 +13,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,7 +31,7 @@ class AndroidPlayerEngine(
     context: Context,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
-    private val player =
+    private val exoPlayer =
         ExoPlayer
             .Builder(context)
             .build()
@@ -53,13 +56,49 @@ class AndroidPlayerEngine(
     private var positionJob =
         scope.launch {
             while (isActive) {
-                positionFlow.emit(player.currentPosition)
+                positionFlow.emit(exoPlayer.currentPosition)
                 delay(POSITION_POLL_INTERVAL_MS)
             }
         }
 
     override val positionUpdates: SharedFlow<Long> = positionFlow.asSharedFlow()
     override val events: SharedFlow<PlayerEvent> = eventFlow.asSharedFlow()
+
+    fun createVideoSurface(
+        context: Context,
+        showControls: Boolean,
+    ): View =
+        PlayerView(context).apply {
+            layoutParams =
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            keepScreenOn = true
+            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            updateVideoSurface(
+                view = this,
+                showControls = showControls,
+            )
+        }
+
+    fun updateVideoSurface(
+        view: View,
+        showControls: Boolean,
+    ) {
+        val playerView = view as? PlayerView ?: return
+        playerView.useController = showControls
+        if (playerView.player !== exoPlayer) {
+            playerView.player = exoPlayer
+        }
+    }
+
+    fun releaseVideoSurface(view: View) {
+        val playerView = view as? PlayerView ?: return
+        if (playerView.player === exoPlayer) {
+            playerView.player = null
+        }
+    }
 
     @UnstableApi
     override suspend fun prepare(
@@ -101,29 +140,29 @@ class AndroidPlayerEngine(
                             .createMediaSource(mediaItem)
                 }
 
-            player.stop()
-            player.setMediaSource(mediaSource)
-            player.prepare()
-            player.seekTo(startPositionMs)
+            exoPlayer.stop()
+            exoPlayer.setMediaSource(mediaSource)
+            exoPlayer.prepare()
+            exoPlayer.seekTo(startPositionMs)
         }
     }
 
     override fun play() {
-        player.playWhenReady = true
-        player.play()
+        exoPlayer.playWhenReady = true
+        exoPlayer.play()
     }
 
     override fun pause() {
-        player.pause()
+        exoPlayer.pause()
     }
 
     override fun stop() {
-        player.stop()
-        player.clearMediaItems()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
     }
 
     override fun seekTo(positionMs: Long) {
-        player.seekTo(positionMs)
+        exoPlayer.seekTo(positionMs)
     }
 
     override fun setAudioTrack(track: AudioTrack?) {
@@ -136,7 +175,7 @@ class AndroidPlayerEngine(
 
     override fun release() {
         positionJob.cancel()
-        player.release()
+        exoPlayer.release()
         scope.cancel()
     }
 

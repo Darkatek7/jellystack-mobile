@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.koin.compose)
     implementation(libs.napier)
     implementation(libs.koin.android)
+    implementation(libs.androidx.media3.ui)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso)
     androidTestImplementation(libs.compose.ui.test.junit4)

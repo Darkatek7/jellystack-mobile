@@ -36,8 +36,9 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation(libs.coroutines.android)
-                implementation(libs.androidx.media3.exoplayer)
-                implementation(libs.androidx.media3.hls)
+                api(libs.androidx.media3.exoplayer)
+                api(libs.androidx.media3.hls)
+                implementation(libs.androidx.media3.ui)
             }
         }
     }
