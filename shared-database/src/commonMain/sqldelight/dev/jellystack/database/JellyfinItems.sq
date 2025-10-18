@@ -40,12 +40,40 @@ WHERE server_id = ? AND library_id = ?
 ORDER BY COALESCE(sort_name, name)
 LIMIT ? OFFSET ?;
 
+selectRecentShows:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND (library_id = ? OR library_id IS NULL)
+  AND (type = 'Series' OR type = 'Episode')
+ORDER BY updated_at DESC
+LIMIT ?;
+
+selectRecentMovies:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND (library_id = ? OR library_id IS NULL)
+  AND type = 'Movie'
+ORDER BY updated_at DESC
+LIMIT ?;
+
 selectContinueWatching:
 SELECT *
 FROM jellyfin_items
 WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0
 ORDER BY COALESCE(last_played, '') DESC, updated_at DESC
 LIMIT ?;
+
+selectEpisodesForSeries:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND series_id = ?
+ORDER BY season_id, index_number;
+
+selectEpisodesForSeason:
+SELECT *
+FROM jellyfin_items
+WHERE server_id = ? AND season_id = ?
+ORDER BY index_number;
 
 selectById:
 SELECT *

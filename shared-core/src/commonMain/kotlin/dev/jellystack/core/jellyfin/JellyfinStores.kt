@@ -79,9 +79,31 @@ interface JellyfinItemStore {
         offset: Long,
     ): List<JellyfinItemRecord>
 
+    suspend fun listRecentShows(
+        serverId: String,
+        libraryId: String?,
+        limit: Long,
+    ): List<JellyfinItemRecord>
+
+    suspend fun listRecentMovies(
+        serverId: String,
+        libraryId: String?,
+        limit: Long,
+    ): List<JellyfinItemRecord>
+
     suspend fun listContinueWatching(
         serverId: String,
         limit: Long,
+    ): List<JellyfinItemRecord>
+
+    suspend fun listEpisodesForSeries(
+        serverId: String,
+        seriesId: String,
+    ): List<JellyfinItemRecord>
+
+    suspend fun listEpisodesForSeason(
+        serverId: String,
+        seasonId: String,
     ): List<JellyfinItemRecord>
 
     suspend fun get(itemId: String): JellyfinItemRecord?

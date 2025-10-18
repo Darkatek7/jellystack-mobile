@@ -51,7 +51,17 @@ class JellyfinBrowseCoordinator(
         refreshJob =
             scope.launch {
                 loadMutex.withLock {
-                    mutableState.value = mutableState.value.copy(isInitialLoading = true, errorMessage = null)
+                    val cachedState = loadCachedState()
+                    val shouldRefresh = forceRefresh || cachedState == null
+                    if (cachedState != null) {
+                        mutableState.value =
+                            cachedState.copy(
+                                isInitialLoading = shouldRefresh,
+                                errorMessage = null,
+                            )
+                    } else {
+                        mutableState.value = mutableState.value.copy(isInitialLoading = true, errorMessage = null)
+                    }
                     try {
                         val cachedLibraries = repository.listLibraries()
                         val libraries =
@@ -66,16 +76,20 @@ class JellyfinBrowseCoordinator(
 
                         val (continueWatching, firstPage) =
                             coroutineScope {
-                                val continueWatchingDeferred = async { repository.refreshContinueWatching(limit = HOME_SECTION_ITEM_LIMIT) }
+                                val continueWatchingDeferred =
+                                    async {
+                                        if (forceRefresh || cachedState?.continueWatching.isNullOrEmpty()) {
+                                            repository.refreshContinueWatching(limit = HOME_SECTION_ITEM_LIMIT)
+                                        } else {
+                                            cachedState!!.continueWatching
+                                        }
+                                    }
                                 val firstPageDeferred =
                                     selectedId?.let { id ->
                                         async {
                                             val cached = repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
-                                            if (cached.isNotEmpty() && !forceRefresh) {
-                                                cached
-                                            } else {
-                                                repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
-                                            }
+                                            if (!forceRefresh && cached.isNotEmpty()) return@async cached
+                                            repository.loadLibraryPage(id, page = 0, pageSize = pageSize, refresh = true)
                                         }
                                     }
 
@@ -87,11 +101,19 @@ class JellyfinBrowseCoordinator(
                         val moviesLibraryId = preferredLibraryId(libraries, "movies") ?: selectedId
                         val recentShows =
                             showsLibraryId?.let { id ->
-                                repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                if (forceRefresh || cachedState?.recentShows.isNullOrEmpty()) {
+                                    repository.refreshRecentlyAddedShows(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                } else {
+                                    cachedState!!.recentShows
+                                }
                             } ?: emptyList()
                         val recentMovies =
                             moviesLibraryId?.let { id ->
-                                repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                if (forceRefresh || cachedState?.recentMovies.isNullOrEmpty()) {
+                                    repository.refreshRecentlyAddedMovies(id, limit = HOME_SECTION_ITEM_LIMIT)
+                                } else {
+                                    cachedState!!.recentMovies
+                                }
                             } ?: emptyList()
 
                         mutableState.value =
@@ -230,6 +252,36 @@ class JellyfinBrowseCoordinator(
                     )
             }
         }
+    }
+
+    private suspend fun loadCachedState(): JellyfinHomeState? {
+        val libraries = repository.listLibraries()
+        if (libraries.isEmpty()) return null
+        val selectedId = selectDefaultLibrary(libraries)
+        val imageBaseUrl = repository.currentServerBaseUrl()
+        val imageAccessToken = repository.currentAccessToken()
+        val continueWatching = repository.cachedContinueWatching(limit = HOME_SECTION_ITEM_LIMIT)
+        val firstPage =
+            selectedId?.let { id ->
+                repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
+            } ?: emptyList()
+        val recentShows = repository.cachedRecentShows(selectedId, limit = HOME_SECTION_ITEM_LIMIT)
+        val recentMovies = repository.cachedRecentMovies(selectedId, limit = HOME_SECTION_ITEM_LIMIT)
+        return JellyfinHomeState(
+            isInitialLoading = false,
+            isPageLoading = false,
+            libraries = libraries,
+            continueWatching = continueWatching,
+            recentShows = recentShows,
+            recentMovies = recentMovies,
+            selectedLibraryId = selectedId,
+            libraryItems = firstPage,
+            currentPage = 0,
+            endReached = selectedId == null || firstPage.size < pageSize,
+            errorMessage = null,
+            imageBaseUrl = imageBaseUrl,
+            imageAccessToken = imageAccessToken,
+        )
     }
 
     private fun preferredLibraryId(

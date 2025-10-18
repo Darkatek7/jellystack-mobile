@@ -164,6 +164,18 @@ class JellyfinBrowseCoordinatorTest {
                 ?.take(limit.toInt())
                 ?: emptyList()
 
+        override suspend fun listRecentShows(
+            serverId: String,
+            libraryId: String?,
+            limit: Long,
+        ): List<JellyfinItemRecord> = emptyList()
+
+        override suspend fun listRecentMovies(
+            serverId: String,
+            libraryId: String?,
+            limit: Long,
+        ): List<JellyfinItemRecord> = emptyList()
+
         override suspend fun listContinueWatching(
             serverId: String,
             limit: Long,
@@ -173,6 +185,26 @@ class JellyfinBrowseCoordinatorTest {
                 ?.filter { (it.positionTicks ?: 0L) > 0L }
                 ?.sortedByDescending { it.updatedAt }
                 ?.take(limit.toInt())
+                ?: emptyList()
+
+        override suspend fun listEpisodesForSeries(
+            serverId: String,
+            seriesId: String,
+        ): List<JellyfinItemRecord> =
+            records[serverId]
+                ?.values
+                ?.filter { it.seriesId == seriesId }
+                ?.sortedBy { it.indexNumber ?: Long.MAX_VALUE }
+                ?: emptyList()
+
+        override suspend fun listEpisodesForSeason(
+            serverId: String,
+            seasonId: String,
+        ): List<JellyfinItemRecord> =
+            records[serverId]
+                ?.values
+                ?.filter { it.seasonId == seasonId }
+                ?.sortedBy { it.indexNumber ?: Long.MAX_VALUE }
                 ?: emptyList()
 
         override suspend fun get(itemId: String): JellyfinItemRecord? = records.values.firstNotNullOfOrNull { it[itemId] }

@@ -43,6 +43,27 @@ class JellyfinBrowseRepository(
         return libraryStore.list(environment.serverKey).map { it.toDomain() }
     }
 
+    suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
+    }
+
+    suspend fun cachedRecentShows(
+        libraryId: String?,
+        limit: Int,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        return itemStore.listRecentShows(environment.serverKey, libraryId, limit.toLong()).map { it.toDomain() }
+    }
+
+    suspend fun cachedRecentMovies(
+        libraryId: String?,
+        limit: Int,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        return itemStore.listRecentMovies(environment.serverKey, libraryId, limit.toLong()).map { it.toDomain() }
+    }
+
     suspend fun loadLibraryPage(
         libraryId: String,
         page: Int,
@@ -96,6 +117,32 @@ class JellyfinBrowseRepository(
         libraryId: String,
         limit: Int,
     ): List<JellyfinItem> = refreshRecentlyAdded(libraryId = libraryId, limit = limit, includeItemTypes = "Movie")
+
+    suspend fun episodesForSeries(seriesId: String): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        return itemStore.listEpisodesForSeries(environment.serverKey, seriesId).map { it.toDomain() }
+    }
+
+    suspend fun episodesForSeason(seasonId: String): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        return itemStore.listEpisodesForSeason(environment.serverKey, seasonId).map { it.toDomain() }
+    }
+
+    suspend fun reportOfflineProgress(
+        mediaId: String,
+        positionMs: Long,
+    ) {
+        val environment = environmentProvider.current() ?: return
+        val api = apiFor(environment)
+        val ticks = if (positionMs <= 0) 0L else positionMs * 10_000
+        runCatching { api.reportPlaybackProgress(environment.userId, mediaId, ticks) }
+    }
+
+    suspend fun markOfflinePlaybackCompleted(mediaId: String) {
+        val environment = environmentProvider.current() ?: return
+        val api = apiFor(environment)
+        runCatching { api.markPlaybackCompleted(environment.userId, mediaId) }
+    }
 
     private suspend fun refreshRecentlyAdded(
         libraryId: String,

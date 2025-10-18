@@ -3,6 +3,7 @@ package dev.jellystack.core.downloads
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 
+@Serializable
 data class DownloadRequest(
     val mediaId: String,
     val downloadUrl: String,
@@ -10,6 +11,9 @@ data class DownloadRequest(
     val mimeType: String?,
     val expectedSizeBytes: Long?,
     val checksumSha256: String?,
+    val kind: OfflineMediaKind = OfflineMediaKind.VIDEO,
+    val language: String? = null,
+    val relativePath: String? = null,
 )
 
 sealed class DownloadStatus {
@@ -54,12 +58,21 @@ interface OfflineDownloadManager {
 }
 
 @Serializable
+enum class OfflineMediaKind {
+    VIDEO,
+    SUBTITLE,
+}
+
+@Serializable
 data class OfflineMedia(
     val mediaId: String,
     val filePath: String,
     val mimeType: String?,
     val checksumSha256: String?,
     val sizeBytes: Long?,
+    val kind: OfflineMediaKind = OfflineMediaKind.VIDEO,
+    val language: String? = null,
+    val relativePath: String? = null,
 ) {
     fun isValid(): Boolean = filePath.isNotBlank()
 }
@@ -68,6 +81,8 @@ interface OfflineMediaStore {
     fun read(mediaId: String): OfflineMedia?
 
     fun write(media: OfflineMedia)
+
+    fun writeAll(media: List<OfflineMedia>)
 
     fun remove(mediaId: String)
 
@@ -81,6 +96,10 @@ class InMemoryOfflineMediaStore : OfflineMediaStore {
 
     override fun write(media: OfflineMedia) {
         backing[media.mediaId] = media
+    }
+
+    override fun writeAll(media: List<OfflineMedia>) {
+        media.forEach { write(it) }
     }
 
     override fun remove(mediaId: String) {

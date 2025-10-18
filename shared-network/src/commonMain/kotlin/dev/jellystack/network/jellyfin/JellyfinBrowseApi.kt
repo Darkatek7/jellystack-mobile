@@ -5,12 +5,17 @@ import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
 import io.ktor.http.HeadersBuilder
 import io.ktor.http.HttpMethod
+import io.ktor.http.contentType
 import io.ktor.http.path
 import io.ktor.http.takeFrom
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Minimal Jellyfin browse client covering libraries, paged items, continue watching, and detail fetches.
@@ -132,6 +137,35 @@ class JellyfinBrowseApi(
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
                 parameter("ImageTypeLimit", 1)
             }.body()
+
+    suspend fun reportPlaybackProgress(
+        userId: String,
+        itemId: String,
+        positionTicks: Long,
+    ) {
+        client.request {
+            method = HttpMethod.Post
+            configure("/Users/$userId/Items/$itemId/PlaybackProgress")
+            contentType(ContentType.Application.Json)
+            setBody(
+                buildJsonObject {
+                    put("ItemId", itemId)
+                    put("UserId", userId)
+                    put("PositionTicks", positionTicks)
+                },
+            )
+        }
+    }
+
+    suspend fun markPlaybackCompleted(
+        userId: String,
+        itemId: String,
+    ) {
+        client.request {
+            method = HttpMethod.Post
+            configure("/Users/$userId/Items/$itemId/Played")
+        }
+    }
 
     companion object {
         private const val REQUIRED_FIELDS =

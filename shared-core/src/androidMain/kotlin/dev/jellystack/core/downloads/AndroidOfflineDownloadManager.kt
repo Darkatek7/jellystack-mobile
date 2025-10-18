@@ -26,50 +26,27 @@ import java.security.MessageDigest
 class AndroidOfflineDownloadManager(
     private val context: Context,
     private val mediaStore: OfflineMediaStore,
+    private val queueStore: OfflineDownloadQueueStore,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : OfflineDownloadManager {
     private val mutex = Mutex()
     private val tasks = mutableMapOf<String, DownloadTask>()
+    private val downloadsRoot = File(context.filesDir, "offline/downloads")
 
     private val _statuses = MutableStateFlow<Map<String, DownloadStatus>>(emptyMap())
     override val statuses: StateFlow<Map<String, DownloadStatus>> = _statuses.asStateFlow()
 
     init {
         scope.launch {
-            mediaStore.list().forEach { media ->
-                val file = File(media.filePath)
-                if (file.exists()) {
-                    updateStatus(
-                        media.mediaId,
-                        DownloadStatus.Completed(
-                            mediaId = media.mediaId,
-                            filePath = media.filePath,
-                            bytesDownloaded = file.length(),
-                        ),
-                    )
-                } else {
-                    mediaStore.remove(media.mediaId)
-                }
-            }
+            restoreCompleted()
+            restoreQueue()
         }
     }
 
     override fun enqueue(request: DownloadRequest) {
         scope.launch {
-            mutex.withLock {
-                if (tasks.containsKey(request.mediaId)) {
-                    return@withLock
-                }
-                val task =
-                    DownloadTask(
-                        request = request,
-                        targetFile = targetFileFor(request),
-                    )
-                tasks[request.mediaId] = task
-                updateStatus(request.mediaId, DownloadStatus.Queued(request.mediaId))
-                startDownload(task)
-            }
+            enqueueInternal(request, persist = true)
         }
     }
 
@@ -100,6 +77,7 @@ class AndroidOfflineDownloadManager(
                 task?.job?.cancel()
                 task?.targetFile?.delete()
                 mediaStore.remove(mediaId)
+                queueStore.remove(mediaId)
                 _statuses.emit(_statuses.value - mediaId)
             }
         }
@@ -120,15 +98,19 @@ class AndroidOfflineDownloadManager(
                         }
                     when (result) {
                         is DownloadCompletion.Completed -> {
-                            mediaStore.write(
+                            val completedMedia =
                                 OfflineMedia(
                                     mediaId = task.request.mediaId,
                                     filePath = task.targetFile.absolutePath,
                                     mimeType = task.request.mimeType,
                                     checksumSha256 = result.checksum,
                                     sizeBytes = task.targetFile.length(),
-                                ),
-                            )
+                                    kind = task.request.kind,
+                                    language = task.request.language,
+                                    relativePath = task.request.relativePath,
+                                )
+                            mediaStore.write(completedMedia)
+                            queueStore.remove(task.request.mediaId)
                             updateStatus(
                                 task.request.mediaId,
                                 DownloadStatus.Completed(
@@ -270,14 +252,27 @@ class AndroidOfflineDownloadManager(
         }
 
     private fun targetFileFor(request: DownloadRequest): File {
-        val downloadsDir = File(context.filesDir, "offline/downloads")
-        downloadsDir.mkdirs()
-        val extension =
-            request.mimeType?.let { mime ->
-                MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
-            } ?: "bin"
-        val safeId = request.mediaId.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        return File(downloadsDir, "$safeId.$extension")
+        downloadsRoot.mkdirs()
+        val target =
+            request.relativePath
+                ?.let { relative ->
+                    val file = File(downloadsRoot, relative)
+                    file.parentFile?.mkdirs()
+                    file
+                }
+                ?: run {
+                    val extension =
+                        request.mimeType?.let { mime ->
+                            MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                        } ?: when (request.kind) {
+                            OfflineMediaKind.SUBTITLE -> "vtt"
+                            else -> "bin"
+                        }
+                    val safeId = request.mediaId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    File(downloadsRoot, "$safeId.$extension")
+                }
+        target.parentFile?.mkdirs()
+        return target
     }
 
     private suspend fun updateStatus(
@@ -285,6 +280,55 @@ class AndroidOfflineDownloadManager(
         status: DownloadStatus,
     ) {
         _statuses.emit(_statuses.value + (mediaId to status))
+    }
+
+    private suspend fun enqueueInternal(
+        request: DownloadRequest,
+        persist: Boolean,
+    ) {
+        mutex.withLock {
+            if (tasks.containsKey(request.mediaId)) {
+                return@withLock
+            }
+            val targetFile = targetFileFor(request)
+            val task =
+                DownloadTask(
+                    request = request,
+                    targetFile = targetFile,
+                )
+            tasks[request.mediaId] = task
+            if (persist) {
+                queueStore.put(request)
+            }
+            updateStatus(request.mediaId, DownloadStatus.Queued(request.mediaId))
+            startDownload(task)
+        }
+    }
+
+    private suspend fun restoreCompleted() {
+        mediaStore.list().forEach { media ->
+            val file = File(media.filePath)
+            if (file.exists()) {
+                updateStatus(
+                    media.mediaId,
+                    DownloadStatus.Completed(
+                        mediaId = media.mediaId,
+                        filePath = media.filePath,
+                        bytesDownloaded = file.length(),
+                    ),
+                )
+            } else {
+                mediaStore.remove(media.mediaId)
+            }
+        }
+    }
+
+    private suspend fun restoreQueue() {
+        queueStore
+            .all()
+            .forEach { request ->
+                enqueueInternal(request, persist = false)
+            }
     }
 
     private data class DownloadTask(

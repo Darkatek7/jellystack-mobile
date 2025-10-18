@@ -3,6 +3,8 @@ package dev.jellystack.players
 import dev.jellystack.core.currentPlatform
 import dev.jellystack.core.downloads.OfflineMediaStore
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
+import dev.jellystack.core.playback.NoopOfflineProgressSyncer
+import dev.jellystack.core.playback.OfflineProgressSyncer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,6 +13,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlin.math.abs
 
 class PlaybackController(
@@ -20,6 +23,7 @@ class PlaybackController(
     private val playerEngine: PlayerEngine = NoopPlayerEngine(),
     private val offlineMediaStore: OfflineMediaStore? = null,
     private val offlineSourceResolver: OfflinePlaybackSourceResolver = NoOfflinePlaybackSourceResolver,
+    private val offlineProgressSyncer: OfflineProgressSyncer = NoopOfflineProgressSyncer,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Stopped)
@@ -127,8 +131,16 @@ class PlaybackController(
         if (saveProgress) {
             if (isNearCompletion(current)) {
                 progressStore.clear(current.mediaId)
+                if (current.stream.mode == PlaybackMode.LOCAL) {
+                    scope.launch { offlineProgressSyncer.onCompleted(current.mediaId) }
+                }
             } else {
                 persistProgress(current.mediaId, current.positionMs)
+                if (current.stream.mode == PlaybackMode.LOCAL) {
+                    scope.launch {
+                        offlineProgressSyncer.onProgress(current.mediaId, current.positionMs, current.durationMs)
+                    }
+                }
             }
         }
         session = null
@@ -190,6 +202,7 @@ class PlaybackController(
         stopInternal(saveProgress = true)
         _state.value = PlaybackState.Stopped
         playerEngine.release()
+        runBlocking { offlineProgressSyncer.flush() }
         scope.cancel()
     }
 
@@ -218,6 +231,11 @@ class PlaybackController(
         }
         if (last == null || abs(progress.positionMs - last.positionMs) >= PROGRESS_WRITE_INTERVAL_MS) {
             persist(progress)
+            if (session.source.mode == PlaybackMode.LOCAL) {
+                scope.launch {
+                    offlineProgressSyncer.onProgress(session.mediaId, progress.positionMs, session.durationMs)
+                }
+            }
         }
     }
 
@@ -254,6 +272,9 @@ class PlaybackController(
                         PlayerEvent.Completed ->
                             session?.let {
                                 progressStore.clear(it.mediaId)
+                                if (it.stream.mode == PlaybackMode.LOCAL) {
+                                    scope.launch { offlineProgressSyncer.onCompleted(it.mediaId) }
+                                }
                                 stopInternal(saveProgress = false)
                             }
                         is PlayerEvent.Error -> {

@@ -17,19 +17,22 @@ class SettingsOfflineMediaStore(
         settings.putString(key(media.mediaId), json.encodeToString(media))
     }
 
+    override fun writeAll(media: List<OfflineMedia>) {
+        media.forEach { write(it) }
+    }
+
     override fun remove(mediaId: String) {
         settings.remove(key(mediaId))
     }
 
-    override fun list(): List<OfflineMedia> {
-        return settings.keys
+    override fun list(): List<OfflineMedia> =
+        settings.keys
             .asSequence()
             .filter { it.startsWith(PREFIX) }
             .mapNotNull { key ->
                 val raw = settings.getStringOrNull(key) ?: return@mapNotNull null
                 runCatching { json.decodeFromString<OfflineMedia>(raw) }.getOrNull()
             }.toList()
-    }
 
     private fun key(mediaId: String): String = "$PREFIX$mediaId"
 

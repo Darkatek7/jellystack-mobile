@@ -1381,6 +1381,8 @@ internal fun JellyfinDetailContent(
     onPauseDownload: () -> Unit = {},
     onResumeDownload: () -> Unit = {},
     onRemoveDownload: () -> Unit = {},
+    onDownloadSeries: (() -> Unit)? = null,
+    onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
     audioTracks: List<AudioTrack> = emptyList(),
     selectedAudioTrack: AudioTrack? = null,
     onSelectAudioTrack: (AudioTrack) -> Unit = {},
@@ -1503,6 +1505,13 @@ internal fun JellyfinDetailContent(
                 color = statusColor,
             )
         }
+        onDownloadSeries?.let { downloadAll ->
+            if (seasons.isNotEmpty()) {
+                TextButton(onClick = downloadAll) {
+                    Text("Download series")
+                }
+            }
+        }
         if (audioTracks.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -1568,10 +1577,21 @@ internal fun JellyfinDetailContent(
                 )
                 seasons.forEach { season ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = season.label,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = season.label,
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            onDownloadSeason?.let { downloadSeason ->
+                                TextButton(onClick = { downloadSeason(season) }) {
+                                    Text("Download season")
+                                }
+                            }
+                        }
                         season.episodes.forEach { episode ->
                             Text(
                                 text = episodeLabel(episode),

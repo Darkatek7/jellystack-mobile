@@ -70,8 +70,10 @@ import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.downloads.DownloadRequest
 import dev.jellystack.core.downloads.DownloadStatus
 import dev.jellystack.core.downloads.OfflineDownloadManager
+import dev.jellystack.core.downloads.OfflineMediaKind
 import dev.jellystack.core.jellyfin.JellyfinBrowseCoordinator
 import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
+import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
@@ -96,7 +98,10 @@ import dev.jellystack.players.PlaybackController
 import dev.jellystack.players.PlaybackMode
 import dev.jellystack.players.PlaybackRequest
 import dev.jellystack.players.PlaybackState
+import dev.jellystack.players.PlaybackStreamSelection
 import dev.jellystack.players.PlaybackStreamSelector
+import dev.jellystack.players.ResolvedPlaybackSource
+import dev.jellystack.players.SubtitleFormat
 import dev.jellystack.players.SubtitleTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -244,6 +249,22 @@ fun JellystackRoot(
             loaded != null && it.mediaId == loaded.detail.id
         }
 
+    platformBackHandler(
+        enabled =
+            isSettingsOpen ||
+                currentScreen != JellystackScreen.Home ||
+                detailState !is JellyfinDetailUiState.Hidden,
+    ) {
+        when {
+            isSettingsOpen -> isSettingsOpen = false
+            detailState !is JellyfinDetailUiState.Hidden -> {
+                detailState = JellyfinDetailUiState.Hidden
+                currentScreen = JellystackScreen.Home
+            }
+            currentScreen != JellystackScreen.Home -> currentScreen = JellystackScreen.Home
+        }
+    }
+
     val derivedSelection =
         remember(detailState, streamSelector) {
             val loaded = detailState as? JellyfinDetailUiState.Loaded ?: return@remember null
@@ -323,58 +344,61 @@ fun JellystackRoot(
     val removeDownload: (String) -> Unit = { mediaId ->
         offlineDownloadManager?.remove(mediaId)
     }
+
+    suspend fun enqueueDownloadRequests(
+        manager: OfflineDownloadManager,
+        requests: List<DownloadRequest>,
+    ) {
+        if (requests.isEmpty()) return
+        val snapshot = downloadStatuses
+        requests.forEach { request ->
+            val status = snapshot[request.mediaId]
+            if (status !is DownloadStatus.InProgress && status !is DownloadStatus.Queued && status !is DownloadStatus.Completed) {
+                manager.enqueue(request)
+                JellystackLog.d("Queued offline download for ${request.mediaId}")
+            }
+        }
+    }
+
+    suspend fun queueDownloadFor(
+        item: JellyfinItem,
+        detail: JellyfinItemDetail,
+        environment: JellyfinEnvironment,
+        manager: OfflineDownloadManager,
+    ) {
+        val playbackRequest = PlaybackRequest.from(item, detail)
+        val selection = streamSelector.select(playbackRequest.mediaSources)
+        if (selection.mode != PlaybackMode.DIRECT) {
+            serverErrorMessage = "Offline downloads require a direct play source."
+            return
+        }
+        val resolved =
+            downloadSourceResolver.resolve(
+                request = playbackRequest,
+                selection = selection,
+                environment = environment,
+                startPositionMs = 0L,
+            )
+        val requests = buildDownloadRequests(item, playbackRequest, selection, resolved, environment)
+        enqueueDownloadRequests(manager, requests)
+    }
     val queueDownloadAction: (JellyfinItem, JellyfinItemDetail) -> Unit = { item, detail ->
         val manager = offlineDownloadManager
         val existingStatus = downloadStatuses[item.id]
-        when {
-            manager == null ->
-                serverErrorMessage = "Offline downloads unavailable on this device."
-
-            existingStatus is DownloadStatus.Completed ->
-                serverErrorMessage = "Item already available offline."
-
-            else ->
-                coroutineScope.launch {
-                    val environment = environmentProvider.current()
-                    if (environment == null) {
-                        serverErrorMessage = "Connect a Jellyfin server to manage downloads."
-                        isSettingsOpen = true
-                        return@launch
-                    }
-                    val playbackRequest = PlaybackRequest.from(item, detail)
-                    val selection = streamSelector.select(playbackRequest.mediaSources)
-                    if (selection.mode != PlaybackMode.DIRECT) {
-                        serverErrorMessage = "Offline downloads require a direct play source."
-                        return@launch
-                    }
-                    val resolved =
-                        downloadSourceResolver.resolve(
-                            request = playbackRequest,
-                            selection = selection,
-                            environment = environment,
-                            startPositionMs = 0L,
-                        )
-                    val durationMs = durationMillisFromTicks(playbackRequest.durationTicks)
-                    val videoBitrate = selection.videoBitrate
-                    val expectedSize =
-                        if (durationMs != null && videoBitrate != null) {
-                            val seconds = durationMs / 1_000.0
-                            ((videoBitrate.toLong() * seconds) / 8.0).toLong()
-                        } else {
-                            null
-                        }
-                    manager.enqueue(
-                        DownloadRequest(
-                            mediaId = item.id,
-                            downloadUrl = resolved.url,
-                            headers = resolved.headers,
-                            mimeType = resolved.mimeType,
-                            expectedSizeBytes = expectedSize,
-                            checksumSha256 = null,
-                        ),
-                    )
-                    JellystackLog.d("Queued offline download for ${item.name} (${item.id})")
+        if (existingStatus is DownloadStatus.Completed) {
+            serverErrorMessage = "Item already available offline."
+        } else if (manager == null) {
+            serverErrorMessage = "Offline downloads unavailable on this device."
+        } else {
+            coroutineScope.launch {
+                val environment = environmentProvider.current()
+                if (environment == null) {
+                    serverErrorMessage = "Connect a Jellyfin server to manage downloads."
+                    isSettingsOpen = true
+                    return@launch
                 }
+                queueDownloadFor(item, detail, environment, manager)
+            }
         }
     }
 
@@ -1068,6 +1092,8 @@ private fun DetailContent(
                 onPauseDownload = { onPauseDownload(state.item.id) },
                 onResumeDownload = { onResumeDownload(state.item.id) },
                 onRemoveDownload = { onRemoveDownload(state.item.id) },
+                onDownloadSeries = null,
+                onDownloadSeason = null,
                 audioTracks = audioTracks,
                 selectedAudioTrack = selectedAudioTrack,
                 onSelectAudioTrack = onSelectAudioTrack,
@@ -1391,4 +1417,137 @@ private fun AddServerDialog(
 private object JellystackTags {
     const val THEME_SWITCH = "theme_switch"
     const val OPEN_SETTINGS = "open_settings"
+}
+
+private fun buildDownloadRequests(
+    item: JellyfinItem,
+    request: PlaybackRequest,
+    selection: PlaybackStreamSelection,
+    source: ResolvedPlaybackSource,
+    environment: JellyfinEnvironment,
+): List<DownloadRequest> {
+    val requests = mutableListOf<DownloadRequest>()
+    val durationMs = durationMillisFromTicks(request.durationTicks)
+    val videoBitrate = selection.videoBitrate
+    val expectedSize =
+        if (durationMs != null && durationMs > 0 && videoBitrate != null && videoBitrate > 0) {
+            val seconds = durationMs / 1_000.0
+            ((videoBitrate.toLong() * seconds) / 8.0).toLong()
+        } else {
+            null
+        }
+    requests +=
+        DownloadRequest(
+            mediaId = item.id,
+            downloadUrl = source.url,
+            headers = source.headers,
+            mimeType = source.mimeType,
+            expectedSizeBytes = expectedSize,
+            checksumSha256 = null,
+            kind = OfflineMediaKind.VIDEO,
+            language = null,
+            relativePath = buildVideoRelativePath(item, selection, source),
+        )
+    selection.subtitleTracks.forEach { track ->
+        val index = track.id.toIntOrNull() ?: return@forEach
+        val formatSegment =
+            when (track.format) {
+                SubtitleFormat.SRT -> "srt"
+                SubtitleFormat.VTT -> "vtt"
+            }
+        val ext = formatSegment.lowercase()
+        val subtitleUrl = buildSubtitleUrl(environment, item.id, selection.sourceId, index, formatSegment, ext)
+        requests +=
+            DownloadRequest(
+                mediaId = "${item.id}::sub::$index",
+                downloadUrl = subtitleUrl,
+                headers = source.headers,
+                mimeType = subtitleMime(track.format),
+                expectedSizeBytes = null,
+                checksumSha256 = null,
+                kind = OfflineMediaKind.SUBTITLE,
+                language = track.language,
+                relativePath = subtitleRelativePath(item, track, ext, index),
+            )
+    }
+    return requests
+}
+
+private fun buildVideoRelativePath(
+    item: JellyfinItem,
+    selection: PlaybackStreamSelection,
+    source: ResolvedPlaybackSource,
+): String {
+    val extension = determineVideoExtension(selection, source)
+    return "${item.id}/${item.id}.$extension"
+}
+
+private fun determineVideoExtension(
+    selection: PlaybackStreamSelection,
+    source: ResolvedPlaybackSource,
+): String {
+    val container = selection.container?.lowercase()
+    if (!container.isNullOrBlank()) return container
+    return when (source.mimeType) {
+        "video/mp4", "application/mp4" -> "mp4"
+        "video/x-matroska" -> "mkv"
+        "video/webm" -> "webm"
+        "video/quicktime" -> "mov"
+        else -> "mp4"
+    }
+}
+
+private fun buildSubtitleUrl(
+    environment: JellyfinEnvironment,
+    itemId: String,
+    sourceId: String,
+    index: Int,
+    formatSegment: String,
+    extension: String,
+): String {
+    val baseUrl = environment.baseUrl.trimEnd('/')
+    return buildString {
+        append(baseUrl)
+        append("/Videos/")
+        append(itemId)
+        append("/")
+        append(sourceId)
+        append("/Subtitles/")
+        append(index)
+        append("/")
+        append(formatSegment)
+        append("/Stream.")
+        append(extension)
+        append("?api_key=")
+        append(environment.accessToken)
+        append("&DeviceId=")
+        append(environment.deviceId)
+        append("&UserId=")
+        append(environment.userId)
+    }
+}
+
+private fun subtitleMime(format: SubtitleFormat): String =
+    when (format) {
+        SubtitleFormat.SRT -> "application/x-subrip"
+        SubtitleFormat.VTT -> "text/vtt"
+    }
+
+private fun subtitleRelativePath(
+    item: JellyfinItem,
+    track: SubtitleTrack,
+    extension: String,
+    index: Int,
+): String {
+    val base =
+        track.language?.let(::sanitizeFileSegment)
+            ?: track.title?.let(::sanitizeFileSegment)
+            ?: "track$index"
+    return "${item.id}/subtitles/$base.$extension"
+}
+
+private fun sanitizeFileSegment(value: String): String {
+    val sanitized = value.lowercase().replace(Regex("[^a-z0-9._-]"), "_")
+    val trimmed = sanitized.trim('_')
+    return if (trimmed.isBlank()) "file" else trimmed
 }
