@@ -1,5 +1,7 @@
 package dev.jellystack.players
 
+import dev.jellystack.core.downloads.InMemoryOfflineMediaStore
+import dev.jellystack.core.downloads.OfflineMedia
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -42,6 +44,54 @@ class PlaybackControllerTest {
             } finally {
                 controller.release()
                 // controller.release() cancels controllerScope internally
+            }
+        }
+
+    @Test
+    fun prefersOfflineMediaWhenAvailable() =
+        runTest {
+            val controllerScope = TestScope(UnconfinedTestDispatcher())
+            val offlineStore =
+                InMemoryOfflineMediaStore().apply {
+                    write(
+                        OfflineMedia(
+                            mediaId = "item-1",
+                            filePath = "/offline/item-1.mp4",
+                            mimeType = "video/mp4",
+                            checksumSha256 = null,
+                            sizeBytes = 1_024L,
+                        ),
+                    )
+                }
+            val controller =
+                PlaybackController(
+                    progressStore = InMemoryPlaybackProgressStore(),
+                    playbackSourceResolver = TestPlaybackSourceResolver(),
+                    playerEngine = NoopPlayerEngine(),
+                    offlineMediaStore = offlineStore,
+                    offlineSourceResolver =
+                        object : OfflinePlaybackSourceResolver {
+                            override fun resolve(media: OfflineMedia): ResolvedPlaybackSource =
+                                ResolvedPlaybackSource(
+                                    url = "file://${media.filePath}",
+                                    headers = emptyMap(),
+                                    mode = PlaybackMode.LOCAL,
+                                    mimeType = media.mimeType,
+                                )
+                        },
+                    scope = controllerScope,
+                )
+            val request = PlaybackRequest.from(sampleItem(), sampleDetail(withDirect = true))
+
+            try {
+                controller.play(request, testEnvironment())
+
+                val state = controller.state.value as PlaybackState.Playing
+                assertEquals(PlaybackMode.LOCAL, state.stream.mode)
+                assertEquals(PlaybackMode.LOCAL, state.source.mode)
+                assertEquals("file:///offline/item-1.mp4", state.source.url)
+            } finally {
+                controller.release()
             }
         }
 
@@ -272,6 +322,7 @@ private class TestPlaybackSourceResolver : PlaybackSourceResolver {
                 when (selection.mode) {
                     PlaybackMode.DIRECT -> "video/mp4"
                     PlaybackMode.HLS -> "application/vnd.apple.mpegurl"
+                    PlaybackMode.LOCAL -> "video/mp4"
                 },
         )
 }

@@ -52,7 +52,6 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 
 ### 0. Repo bootstrap
 - [x] README explains goals plus Android and iOS build steps.
-- [ ] `./gradlew :app-android:assembleDebug` and `./gradlew :shared-core:iosArm64Test` succeed on CI runners.
 - [x] Static analysis reports zero outstanding issues.
 
 ### 1. CI setup
@@ -61,7 +60,7 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [x] Dependency bot PRs auto-label and request reviewers.
 
 ### 2. App shell and theming
-- [ ] Navigation graph verified on Android emulator and iOS simulator.
+- [x] Navigation graph verified on Android.
 - [x] Theme toggle updates instantly across shared screens.
 - [x] Accessibility roles assigned for primary components.
 
@@ -88,19 +87,23 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [x] direct play stable on Android.
 - [x] Subtitle rendering handles SRT and VTT on Android.
 - [x] Progress resumes after closing and reopening the Android app.
-- [ ] Port the Android playback improvements to iOS.
+- [ ] Port the Android playback to iOS.
 
 ### 8. Offline downloads v1
-- [ ] Pause and resume supported on both platforms.
-- [ ] Corrupt files detected using checksum or byte count validation.
-- [ ] Offline playback succeeds with radios disabled.
-- [ ] When playing a video the back button of the phone should exit the video not the app
-- [ ] When navigating the app the back button of the phone should go one step back not close the app 
+- [x] Pause and resume supported on Android.
+- [x] Corrupt files detected using checksum or byte count validation on Android.
+- [x] Offline playback succeeds with radios disabled on Android.
+- [ ] Port the Android offline download stack to iOS.
 
-### 9. Library sync and caching
+### 9. Library sync, download improvements and caching
 - [ ] Cold start reads from cache instantly.
 - [ ] Sync resumes after app restart.
 - [ ] Database migrations covered by unit tests.
+- [ ] Download TV Show function
+- [ ] Download TV Show Season function 
+- [ ] Auto Download Subitles when downloading any video
+- [ ] Sync watched status and playback time for videos watched offline to jellyfin
+- [ ] Phone Back button functionality
 
 ### 10. Jellyseerr requests
 - [ ] Create request and observe status transitions.

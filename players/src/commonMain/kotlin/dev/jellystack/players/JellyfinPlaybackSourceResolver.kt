@@ -54,6 +54,9 @@ class JellyfinPlaybackSourceResolver(
                         append("&UserId=")
                         append(environment.userId)
                     } to HLS_MIME_TYPE
+
+                PlaybackMode.LOCAL ->
+                    throw IllegalArgumentException("Local playback must not be resolved via network resolver")
             }
 
         val headers =

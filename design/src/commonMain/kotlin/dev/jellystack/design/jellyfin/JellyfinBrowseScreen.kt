@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +58,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import dev.jellystack.core.downloads.DownloadStatus
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
@@ -66,6 +68,7 @@ import dev.jellystack.players.SubtitleTrack
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlin.math.roundToInt
 
 @Composable
 fun JellyfinBrowseScreen(
@@ -1373,7 +1376,11 @@ internal fun JellyfinDetailContent(
     accessToken: String?,
     seasons: List<SeasonEpisodes>,
     onPlay: () -> Unit,
+    downloadStatus: DownloadStatus? = null,
     onQueueDownload: () -> Unit,
+    onPauseDownload: () -> Unit = {},
+    onResumeDownload: () -> Unit = {},
+    onRemoveDownload: () -> Unit = {},
     audioTracks: List<AudioTrack> = emptyList(),
     selectedAudioTrack: AudioTrack? = null,
     onSelectAudioTrack: (AudioTrack) -> Unit = {},
@@ -1408,13 +1415,93 @@ internal fun JellyfinDetailContent(
             accessToken = accessToken,
             contentDescription = detail.name,
         )
+        var downloadLabel = "Download"
+        var downloadEnabled = true
+        var primaryAction: () -> Unit = onQueueDownload
+        var secondaryLabel: String? = null
+        var secondaryAction: (() -> Unit)? = null
+        var progressFraction: Float? = null
+        var statusMessage: String? = null
+        var statusColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+        when (downloadStatus) {
+            null -> Unit
+            is DownloadStatus.Failed -> {
+                downloadLabel = "Retry download"
+                statusMessage = downloadStatus.cause.message ?: "Download failed"
+                statusColor = MaterialTheme.colorScheme.error
+                secondaryLabel = "Clear"
+                secondaryAction = onRemoveDownload
+            }
+            is DownloadStatus.Queued -> {
+                downloadLabel = "Queued…"
+                downloadEnabled = false
+                statusMessage = "Waiting for download slot"
+                secondaryLabel = "Cancel"
+                secondaryAction = onRemoveDownload
+            }
+            is DownloadStatus.InProgress -> {
+                val total = downloadStatus.totalBytes
+                progressFraction =
+                    if (total != null && total > 0) {
+                        (downloadStatus.bytesDownloaded.toFloat() / total).coerceIn(0f, 1f)
+                    } else {
+                        null
+                    }
+                downloadLabel = "Pause"
+                primaryAction = onPauseDownload
+                secondaryLabel = "Cancel"
+                secondaryAction = onRemoveDownload
+                statusMessage =
+                    if (total != null && total > 0) {
+                        "${formatBytes(downloadStatus.bytesDownloaded)} / ${formatBytes(total)}"
+                    } else {
+                        "${formatBytes(downloadStatus.bytesDownloaded)} downloaded"
+                    }
+            }
+            is DownloadStatus.Paused -> {
+                downloadLabel = "Resume"
+                primaryAction = onResumeDownload
+                secondaryLabel = "Remove"
+                secondaryAction = onRemoveDownload
+                statusMessage = "Paused at ${formatBytes(downloadStatus.bytesDownloaded)}"
+            }
+            is DownloadStatus.Completed -> {
+                downloadLabel = "Offline ready"
+                downloadEnabled = false
+                secondaryLabel = "Remove"
+                secondaryAction = onRemoveDownload
+                statusMessage = "Stored (${formatBytes(downloadStatus.bytesDownloaded)})"
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             FilledTonalButton(onClick = onPlay) {
                 Text(text = "Play")
             }
-            OutlinedButton(onClick = onQueueDownload) {
-                Text(text = "Download")
+            OutlinedButton(
+                onClick = primaryAction,
+                enabled = downloadEnabled,
+            ) {
+                Text(text = downloadLabel)
             }
+            secondaryLabel?.let { label ->
+                TextButton(onClick = { secondaryAction?.invoke() }) {
+                    Text(text = label)
+                }
+            }
+        }
+        progressFraction?.let { progress ->
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        statusMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = statusColor,
+            )
         }
         if (audioTracks.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1571,6 +1658,24 @@ internal fun JellyfinDetailContent(
             }
         }
     }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val kb = bytes / 1024.0
+    if (kb < 1.0) return "$bytes B"
+    val mb = kb / 1024.0
+    if (mb < 1.0) {
+        val rounded = (kb * 10).roundToInt() / 10.0
+        return "$rounded KB"
+    }
+    val gb = mb / 1024.0
+    if (gb < 1.0) {
+        val rounded = (mb * 10).roundToInt() / 10.0
+        return "$rounded MB"
+    }
+    val rounded = (gb * 10).roundToInt() / 10.0
+    return "$rounded GB"
 }
 
 private fun progressFraction(item: JellyfinItem): Float {

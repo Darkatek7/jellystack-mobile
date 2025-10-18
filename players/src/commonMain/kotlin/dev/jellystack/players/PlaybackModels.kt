@@ -42,6 +42,7 @@ data class PlaybackRequest(
 enum class PlaybackMode {
     DIRECT,
     HLS,
+    LOCAL,
 }
 
 data class AudioTrack(

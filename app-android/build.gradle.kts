@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    implementation(libs.serialization.json)
     implementation(libs.compose.navigation)
     implementation(libs.sqldelight.android)
     implementation(libs.coroutines.android)

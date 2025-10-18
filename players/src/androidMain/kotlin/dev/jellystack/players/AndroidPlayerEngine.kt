@@ -10,6 +10,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -32,6 +33,7 @@ class AndroidPlayerEngine(
     context: Context,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : PlayerEngine {
+    private val appContext = context.applicationContext
     private val exoPlayer =
         ExoPlayer
             .Builder(context)
@@ -109,11 +111,6 @@ class AndroidPlayerEngine(
         subtitleTrack: SubtitleTrack?,
     ) {
         withContext(Dispatchers.Main) {
-            val dataSourceFactory =
-                DefaultHttpDataSource
-                    .Factory()
-                    .setDefaultRequestProperties(source.headers)
-
             val mediaItem =
                 MediaItem
                     .Builder()
@@ -124,6 +121,7 @@ class AndroidPlayerEngine(
                                 ?: when (source.mode) {
                                     PlaybackMode.DIRECT -> MimeTypes.VIDEO_MP4
                                     PlaybackMode.HLS -> MimeTypes.APPLICATION_M3U8
+                                    PlaybackMode.LOCAL -> MimeTypes.VIDEO_MP4
                                 }
                         setMimeType(mimeType)
                     }.build()
@@ -132,12 +130,23 @@ class AndroidPlayerEngine(
                 when (source.mode) {
                     PlaybackMode.DIRECT ->
                         ProgressiveMediaSource
-                            .Factory(dataSourceFactory)
-                            .createMediaSource(mediaItem)
+                            .Factory(
+                                DefaultHttpDataSource
+                                    .Factory()
+                                    .setDefaultRequestProperties(source.headers),
+                            ).createMediaSource(mediaItem)
 
                     PlaybackMode.HLS ->
                         HlsMediaSource
-                            .Factory(dataSourceFactory)
+                            .Factory(
+                                DefaultHttpDataSource
+                                    .Factory()
+                                    .setDefaultRequestProperties(source.headers),
+                            ).createMediaSource(mediaItem)
+
+                    PlaybackMode.LOCAL ->
+                        ProgressiveMediaSource
+                            .Factory(DefaultDataSource.Factory(appContext))
                             .createMediaSource(mediaItem)
                 }
 

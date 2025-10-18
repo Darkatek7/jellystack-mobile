@@ -1,6 +1,7 @@
 package dev.jellystack.players
 
 import dev.jellystack.core.currentPlatform
+import dev.jellystack.core.downloads.OfflineMediaStore
 import dev.jellystack.core.jellyfin.JellyfinEnvironment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,8 @@ class PlaybackController(
     private val streamSelector: PlaybackStreamSelector = PlaybackStreamSelector(),
     private val playbackSourceResolver: PlaybackSourceResolver = JellyfinPlaybackSourceResolver(),
     private val playerEngine: PlayerEngine = NoopPlayerEngine(),
+    private val offlineMediaStore: OfflineMediaStore? = null,
+    private val offlineSourceResolver: OfflinePlaybackSourceResolver = NoOfflinePlaybackSourceResolver,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Stopped)
@@ -33,19 +36,45 @@ class PlaybackController(
         environment: JellyfinEnvironment,
     ) {
         stopInternal(saveProgress = true)
-        val selection = streamSelector.select(request.mediaSources)
         val startingPosition =
             progressStore.read(request.mediaId)?.positionMs
                 ?: ticksToMillis(request.resumePositionTicks)
                 ?: 0L
+        val offlineSource =
+            offlineMediaStore
+                ?.read(request.mediaId)
+                ?.let { media ->
+                    runCatching { offlineSourceResolver.resolve(media) }.getOrNull()
+                }
+
+        val selection: PlaybackStreamSelection
+        val source: ResolvedPlaybackSource
         val durationMs = ticksToMillis(request.durationTicks)
-        val source =
-            playbackSourceResolver.resolve(
-                request = request,
-                selection = selection,
-                environment = environment,
-                startPositionMs = startingPosition,
-            )
+
+        if (offlineSource != null) {
+            selection =
+                PlaybackStreamSelection(
+                    sourceId = "offline-${request.mediaId}",
+                    mode = PlaybackMode.LOCAL,
+                    container = null,
+                    videoCodec = null,
+                    audioCodec = null,
+                    videoBitrate = null,
+                    audioTracks = emptyList(),
+                    subtitleTracks = emptyList(),
+                )
+            source = offlineSource
+        } else {
+            selection = streamSelector.select(request.mediaSources)
+            source =
+                playbackSourceResolver.resolve(
+                    request = request,
+                    selection = selection,
+                    environment = environment,
+                    startPositionMs = startingPosition,
+                )
+        }
+
         playerEngine.prepare(
             source = source,
             startPositionMs = startingPosition,
