@@ -158,7 +158,7 @@ class PlaybackController(
     fun currentSession(): PlaybackSession? = session
 
     fun release() {
-        stopInternal(saveProgress = false)
+        stopInternal(saveProgress = true)
         _state.value = PlaybackState.Stopped
         playerEngine.release()
         scope.cancel()

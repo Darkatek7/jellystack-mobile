@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.koin.compose)
     implementation(libs.napier)
+    implementation(libs.multiplatform.settings)
     implementation(libs.koin.android)
     implementation(libs.androidx.media3.ui)
     androidTestImplementation(libs.androidx.test.junit)

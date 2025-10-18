@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -144,6 +145,10 @@ class AndroidPlayerEngine(
             exoPlayer.setMediaSource(mediaSource)
             exoPlayer.prepare()
             exoPlayer.seekTo(startPositionMs)
+            applyTrackPreferences(
+                audioTrack = audioTrack,
+                subtitleTrack = subtitleTrack,
+            )
         }
     }
 
@@ -166,17 +171,66 @@ class AndroidPlayerEngine(
     }
 
     override fun setAudioTrack(track: AudioTrack?) {
-        // Track selection will be enhanced in future iterations.
+        val builder =
+            exoPlayer
+                .trackSelectionParameters
+                .buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+
+        if (track?.language != null) {
+            builder.setPreferredAudioLanguages(track.language)
+        } else {
+            builder.setPreferredAudioLanguages()
+        }
+
+        exoPlayer.trackSelectionParameters = builder.build()
     }
 
     override fun setSubtitleTrack(track: SubtitleTrack?) {
-        // Subtitle track switching placeholder.
+        val builder =
+            exoPlayer
+                .trackSelectionParameters
+                .buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+
+        if (track == null) {
+            builder.setPreferredTextLanguages()
+            builder.setPreferredTextRoleFlags(0)
+            builder.setSelectUndeterminedTextLanguage(false)
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        } else {
+            if (track.language != null) {
+                builder.setPreferredTextLanguages(track.language)
+                builder.setSelectUndeterminedTextLanguage(false)
+            } else {
+                builder.setPreferredTextLanguages()
+                builder.setSelectUndeterminedTextLanguage(true)
+            }
+            val roleFlags =
+                if (track.isForced) {
+                    C.ROLE_FLAG_SUBTITLE or C.ROLE_FLAG_CAPTION
+                } else {
+                    C.ROLE_FLAG_SUBTITLE
+                }
+            builder.setPreferredTextRoleFlags(roleFlags)
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+        }
+
+        exoPlayer.trackSelectionParameters = builder.build()
     }
 
     override fun release() {
         positionJob.cancel()
         exoPlayer.release()
         scope.cancel()
+    }
+
+    private fun applyTrackPreferences(
+        audioTrack: AudioTrack?,
+        subtitleTrack: SubtitleTrack?,
+    ) {
+        setAudioTrack(audioTrack)
+        setSubtitleTrack(subtitleTrack)
     }
 
     private companion object {

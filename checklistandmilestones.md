@@ -85,14 +85,17 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [x] Detail screen renders metadata, artwork, and actions.
 
 ### 7. Playback engine v1
-- [ ] 1080p H264 direct play stable on both platforms.
-- [ ] Subtitle rendering handles SRT and VTT.
-- [ ] Progress resumes after closing and reopening the app.
+- [x] direct play stable on Android.
+- [x] Subtitle rendering handles SRT and VTT on Android.
+- [x] Progress resumes after closing and reopening the Android app.
+- [ ] Port the Android playback improvements to iOS.
 
 ### 8. Offline downloads v1
 - [ ] Pause and resume supported on both platforms.
 - [ ] Corrupt files detected using checksum or byte count validation.
 - [ ] Offline playback succeeds with radios disabled.
+- [ ] When playing a video the back button of the phone should exit the video not the app
+- [ ] When navigating the app the back button of the phone should go one step back not close the app 
 
 ### 9. Library sync and caching
 - [ ] Cold start reads from cache instantly.
