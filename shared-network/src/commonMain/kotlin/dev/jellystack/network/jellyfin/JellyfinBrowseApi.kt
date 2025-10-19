@@ -138,6 +138,24 @@ class JellyfinBrowseApi(
                 parameter("ImageTypeLimit", 1)
             }.body()
 
+    suspend fun fetchEpisodesForSeries(
+        userId: String,
+        seriesId: String,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Users/$userId/Items")
+                parameter("ParentId", seriesId)
+                parameter("IncludeItemTypes", "Episode")
+                parameter("Recursive", true)
+                parameter("Fields", REQUIRED_FIELDS)
+                parameter("ImageTypeLimit", 1)
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
+                parameter("SortBy", "ParentIndexNumber,IndexNumber,PremiereDate")
+                parameter("SortOrder", "Ascending")
+            }.body()
+
     suspend fun reportPlaybackProgress(
         userId: String,
         itemId: String,

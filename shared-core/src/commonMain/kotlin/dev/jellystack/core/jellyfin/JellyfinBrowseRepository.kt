@@ -123,6 +123,16 @@ class JellyfinBrowseRepository(
         return itemStore.listEpisodesForSeries(environment.serverKey, seriesId).map { it.toDomain() }
     }
 
+    suspend fun refreshEpisodesForSeries(seriesId: String): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val api = apiFor(environment)
+        val now = clock.now()
+        val response = api.fetchEpisodesForSeries(environment.userId, seriesId)
+        val records = response.items.map { it.toRecord(environment, fallbackLibraryId = seriesId, updatedAt = now) }
+        itemStore.upsert(records)
+        return itemStore.listEpisodesForSeries(environment.serverKey, seriesId).map { it.toDomain() }
+    }
+
     suspend fun episodesForSeason(seasonId: String): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listEpisodesForSeason(environment.serverKey, seasonId).map { it.toDomain() }

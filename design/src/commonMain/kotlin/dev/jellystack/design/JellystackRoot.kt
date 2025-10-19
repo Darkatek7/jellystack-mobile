@@ -225,6 +225,7 @@ fun JellystackRoot(
     var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
     var currentTab by remember { mutableStateOf(JellystackTab.Home) }
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
+    var detailEpisodeCache by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var detailJob by remember { mutableStateOf<Job?>(null) }
     var bulkDownloadJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -313,7 +314,11 @@ fun JellystackRoot(
     val detailDownloadStatus = loadedDetail?.let { downloadStatuses[it.item.id] }
     val detailEpisodes =
         if (loadedDetail != null) {
-            findEpisodesForDetail(loadedDetail, browseState.libraryItems)
+            findEpisodesForDetail(
+                state = loadedDetail,
+                libraryItems = browseState.libraryItems,
+                knownEpisodes = detailEpisodeCache,
+            )
         } else {
             emptyList()
         }
@@ -591,6 +596,7 @@ fun JellystackRoot(
         val baseUrl = browseCoordinator.state.value.imageBaseUrl
         val accessToken = browseCoordinator.state.value.imageAccessToken
         detailState = JellyfinDetailUiState.Loading(item, baseUrl, accessToken)
+        detailEpisodeCache = emptyList()
         detailJob?.cancel()
         val job =
             coroutineScope.launch {
@@ -723,6 +729,26 @@ fun JellystackRoot(
             }
     }
 
+    LaunchedEffect(detailState) {
+        when (val state = detailState) {
+            is JellyfinDetailUiState.Loaded -> {
+                val seriesId =
+                    when {
+                        state.item.type.equals("Series", ignoreCase = true) -> state.item.id
+                        !state.item.seriesId.isNullOrBlank() -> state.item.seriesId
+                        else -> null
+                    }
+                detailEpisodeCache =
+                    if (seriesId != null) {
+                        browseRepository.refreshEpisodesForSeries(seriesId)
+                    } else {
+                        emptyList()
+                    }
+            }
+            else -> detailEpisodeCache = emptyList()
+        }
+    }
+
     LaunchedEffect(browseState.imageBaseUrl, browseState.imageAccessToken) {
         detailState = detailState.withImageInfo(browseState.imageBaseUrl, browseState.imageAccessToken)
     }
@@ -840,6 +866,7 @@ fun JellystackRoot(
                             DetailContent(
                                 state = detailState,
                                 libraryItems = browseState.libraryItems,
+                                knownEpisodes = detailEpisodeCache,
                                 onRetry = onRetryDetail,
                                 onPlay = playbackAction,
                                 downloadStatus = detailDownloadStatus,
@@ -1037,6 +1064,7 @@ private fun JellystackPreviewRoot(
                             DetailContent(
                                 state = detailState,
                                 libraryItems = browseState.libraryItems,
+                                knownEpisodes = emptyList(),
                                 onRetry = {},
                                 onPlay = { _, _ -> },
                                 modifier = Modifier.padding(padding),
@@ -1192,6 +1220,7 @@ private fun JellystackBottomBar(
 private fun DetailContent(
     state: JellyfinDetailUiState,
     libraryItems: List<JellyfinItem>,
+    knownEpisodes: List<JellyfinItem>,
     onRetry: () -> Unit,
     onPlay: (JellyfinItem, JellyfinItemDetail) -> Unit,
     downloadStatus: DownloadStatus? = null,
@@ -1248,7 +1277,14 @@ private fun DetailContent(
             }
 
         is JellyfinDetailUiState.Loaded -> {
-            val episodes = remember(state.detail.id, libraryItems) { findEpisodesForDetail(state, libraryItems) }
+            val episodes =
+                remember(state.detail.id, libraryItems, knownEpisodes) {
+                    findEpisodesForDetail(
+                        state = state,
+                        libraryItems = libraryItems,
+                        knownEpisodes = knownEpisodes,
+                    )
+                }
             val seasonGroups = remember(episodes) { buildSeasonEpisodes(episodes) }
             JellyfinDetailContent(
                 detail = state.detail,
@@ -1278,6 +1314,7 @@ private fun DetailContent(
 private fun findEpisodesForDetail(
     state: JellyfinDetailUiState.Loaded,
     libraryItems: List<JellyfinItem>,
+    knownEpisodes: List<JellyfinItem>,
 ): List<JellyfinItem> {
     val targetNames =
         buildSet {
@@ -1294,15 +1331,17 @@ private fun findEpisodesForDetail(
             }
             state.item.parentId?.let { add(it) }
             state.item.seasonId?.let { add(it) }
+            state.item.seriesId?.let { add(it) }
         }
-    return libraryItems
+    return (if (knownEpisodes.isNotEmpty()) knownEpisodes else libraryItems)
         .asSequence()
         .filter { it.type.equals("Episode", ignoreCase = true) }
         .filter { episode ->
             val matchesName = episode.seriesName?.lowercase()?.let { it in targetNames } ?: false
             val matchesId =
                 episode.parentId?.let { it in targetIds } == true ||
-                    episode.seasonId?.let { it in targetIds } == true
+                    episode.seasonId?.let { it in targetIds } == true ||
+                    episode.seriesId?.let { it in targetIds } == true
             matchesName || matchesId
         }.toList()
 }

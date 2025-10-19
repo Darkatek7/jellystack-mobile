@@ -35,6 +35,12 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -42,12 +48,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -72,6 +80,7 @@ import dev.jellystack.players.SubtitleTrack
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.datetime.Instant
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -1045,6 +1054,9 @@ private fun TvSeriesCard(
     onOpenSeries: (JellyfinItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val seasonGroups = remember(group) { buildSeasonEpisodes(group.episodes) }
+    val showEpisodeOverview = seasonGroups.isNotEmpty()
+
     Card(
         modifier = modifier.fillMaxWidth(),
         onClick = {
@@ -1111,6 +1123,23 @@ private fun TvSeriesCard(
                         )
                     }
                 }
+            }
+            if (showEpisodeOverview) {
+                Divider(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                )
+                SeasonEpisodeSelector(
+                    seasons = seasonGroups,
+                    baseUrl = baseUrl,
+                    accessToken = accessToken,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                )
             }
         }
     }
@@ -1401,7 +1430,7 @@ private fun LoadMoreListener(
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 internal fun JellyfinDetailContent(
     detail: JellyfinItemDetail,
     baseUrl: String?,
@@ -1601,39 +1630,13 @@ internal fun JellyfinDetailContent(
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
-        if (seasons.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Episodes",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                seasons.forEach { season ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = season.label,
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            onDownloadSeason?.let { downloadSeason ->
-                                TextButton(onClick = { downloadSeason(season) }) {
-                                    Text("Download season")
-                                }
-                            }
-                        }
-                        season.episodes.forEach { episode ->
-                            Text(
-                                text = episodeLabel(episode),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        SeasonEpisodeSelector(
+            seasons = seasons,
+            baseUrl = baseUrl,
+            accessToken = accessToken,
+            modifier = Modifier.fillMaxWidth(),
+            onDownloadSeason = onDownloadSeason,
+        )
         if (detail.mediaSources.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -1704,6 +1707,214 @@ internal fun JellyfinDetailContent(
                     ?.let { studios ->
                         Text(
                             text = studios,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SeasonEpisodeSelector(
+    seasons: List<SeasonEpisodes>,
+    baseUrl: String?,
+    accessToken: String?,
+    modifier: Modifier = Modifier,
+    onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
+) {
+    if (seasons.isEmpty()) return
+
+    val coercedDefault =
+        remember(seasons) { defaultSeasonSelectionIndex(seasons).coerceIn(0, seasons.lastIndex) }
+    var selectedSeasonIndex by remember(seasons) { mutableStateOf(coercedDefault) }
+    selectedSeasonIndex = selectedSeasonIndex.coerceIn(0, seasons.lastIndex)
+    val selectedSeason = seasons.getOrNull(selectedSeasonIndex)
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "Episodes",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            var expanded by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.weight(1f)) {
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded },
+                ) {
+                    OutlinedTextField(
+                        value = selectedSeason?.label ?: "Select season",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Season") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier =
+                            Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                    )
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false },
+                    ) {
+                        seasons.forEachIndexed { index, season ->
+                            DropdownMenuItem(
+                                text = { Text(season.label) },
+                                onClick = {
+                                    selectedSeasonIndex = index
+                                    expanded = false
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                            )
+                        }
+                    }
+                }
+            }
+            if (selectedSeason != null) {
+                onDownloadSeason?.let { downloadSeason ->
+                    TextButton(onClick = { downloadSeason(selectedSeason) }) {
+                        Text("Download season")
+                    }
+                }
+            }
+        }
+        val episodes = selectedSeason?.episodes.orEmpty()
+        if (episodes.isEmpty()) {
+            Text(
+                text = "No episodes available for this season.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                episodes.forEach { episode ->
+                    EpisodeCard(
+                        episode = episode,
+                        baseUrl = baseUrl,
+                        accessToken = accessToken,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun progressPercentage(item: JellyfinItem): Double = progressFraction(item).toDouble() * 100.0
+
+private fun defaultSeasonSelectionIndex(seasons: List<SeasonEpisodes>): Int {
+    if (seasons.isEmpty()) return 0
+
+    data class Candidate(
+        val seasonIndex: Int,
+        val hasProgress: Boolean,
+        val inProgress: Boolean,
+        val lastPlayedMillis: Long,
+        val hasMedia: Boolean,
+    )
+
+    val candidates =
+        seasons.flatMapIndexed { index, season ->
+            season.episodes.map { episode ->
+                val progress = progressPercentage(episode)
+                val hasProgress = progress > 0.0
+                val inProgress = progress > 0.0 && progress < 98.0
+                val lastPlayedMillis =
+                    episode.lastPlayed
+                        ?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() }
+                        ?: Long.MIN_VALUE
+                val hasMedia = episode.runTimeTicks != null || !episode.mediaType.isNullOrBlank()
+                Candidate(
+                    seasonIndex = index,
+                    hasProgress = hasProgress,
+                    inProgress = inProgress,
+                    lastPlayedMillis = lastPlayedMillis,
+                    hasMedia = hasMedia,
+                )
+            }
+        }
+    val watchedCandidate =
+        candidates
+            .filter { it.hasProgress }
+            .maxWithOrNull(
+                compareBy<Candidate>({ if (it.inProgress) 1 else 0 }, { it.lastPlayedMillis }),
+            )
+    if (watchedCandidate != null) {
+        return watchedCandidate.seasonIndex
+    }
+    val withMedia = candidates.firstOrNull { it.hasMedia }
+    return withMedia?.seasonIndex ?: 0
+}
+
+@Composable
+private fun EpisodeCard(
+    episode: JellyfinItem,
+    baseUrl: String?,
+    accessToken: String?,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            PosterImage(
+                modifier =
+                    Modifier
+                        .width(96.dp)
+                        .height(144.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                baseUrl = baseUrl,
+                itemId = episode.id,
+                primaryTag = episode.primaryImageTag,
+                thumbTag = episode.thumbImageTag,
+                backdropTag = episode.backdropImageTag,
+                accessToken = accessToken,
+                contentDescription = episode.name,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = episodeLabel(episode),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                val progress = progressFraction(episode)
+                if (progress > 0f) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LinearProgressIndicator(
+                            progress = progress,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = "${(progress * 100).roundToInt()}% watched",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                episode.overview
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let {
+                        Text(
+                            text = it,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }

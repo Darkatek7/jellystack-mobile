@@ -107,7 +107,11 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [x] When the user performs a downward swipe gesture at the top of the app screen, the app should trigger a manual refresh to resync its data with the Jellyfin server.
 
 ### 10. Jellyseerr requests
+- [ ] UI For Jellyseer at the media Tab
 - [ ] Create request and observe status transitions.
+- [ ] View Jellyseer requested media
+- [ ] Delete requested media
+- [ ] Option to remove media from sonarr/radarr using jellyseerr
 - [ ] Duplicate request surfaces friendly error.
 
 ### 11. Sonarr management

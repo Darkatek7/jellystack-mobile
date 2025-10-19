@@ -31,6 +31,7 @@ kotlin {
                 implementation(libs.compose.material.icons)
                 implementation(libs.compose.windowsize)
                 implementation(libs.coroutines.core)
+                implementation(libs.kotlinx.datetime)
                 implementation(libs.koin.core)
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
