@@ -1577,14 +1577,6 @@ internal fun JellyfinDetailContent(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-        } else {
-            onDownloadSeries?.let { downloadAll ->
-                if (seasons.isNotEmpty()) {
-                    TextButton(onClick = downloadAll) {
-                        Text("Download series")
-                    }
-                }
-            }
         }
         if (audioTracks.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1775,7 +1767,7 @@ private fun SeasonEpisodeSelector(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Episodes",
+            text = "Seasons",
             style = MaterialTheme.typography.titleMedium,
         )
         Row(
