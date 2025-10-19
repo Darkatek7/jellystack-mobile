@@ -25,8 +25,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,6 +74,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun JellyfinBrowseScreen(
     state: JellyfinHomeState,
@@ -83,6 +88,17 @@ fun JellyfinBrowseScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val pullRefreshState =
+        rememberPullRefreshState(
+            refreshing = state.isInitialLoading,
+            onRefresh = onRefresh,
+        )
+    val showBlockingLoading =
+        state.isInitialLoading &&
+            state.libraryItems.isEmpty() &&
+            state.continueWatching.isEmpty() &&
+            state.recentShows.isEmpty() &&
+            state.recentMovies.isEmpty()
     val selectedLibrary =
         remember(state.libraries, state.selectedLibraryId) {
             state.libraries.firstOrNull { it.id == state.selectedLibraryId }
@@ -160,7 +176,12 @@ fun JellyfinBrowseScreen(
         )
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .pullRefresh(pullRefreshState),
+    ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
@@ -276,7 +297,18 @@ fun JellyfinBrowseScreen(
             }
         }
 
-        if (state.isInitialLoading) {
+        if (!showBlockingLoading) {
+            PullRefreshIndicator(
+                refreshing = state.isInitialLoading,
+                state = pullRefreshState,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp),
+            )
+        }
+
+        if (showBlockingLoading) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),

@@ -49,6 +49,11 @@ kotlin {
                     implementation(libs.sqldelight.native)
                 }
             }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.sqldelight.driver.jvm)
+            }
+        }
     }
 }
 

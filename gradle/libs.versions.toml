@@ -73,6 +73,7 @@ media-kit-player = { module = "io.github.alexmercerind:media-kit", version.ref =
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 compose-material-icons = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "compose-material-icons" }
 compose-windowsize = { module = "androidx.compose.material3:material3-window-size-class", version.ref = "compose-windowsize" }
+compose-material = { module = "org.jetbrains.compose.material:material", version.ref = "compose" }
 androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-junit" }
 androidx-test-espresso = { module = "androidx.test.espresso:espresso-core", version.ref = "androidx-test-espresso" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidx-security-crypto" }

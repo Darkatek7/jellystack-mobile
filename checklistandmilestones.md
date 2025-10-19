@@ -96,14 +96,15 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [ ] Port the Android offline download stack to iOS.
 
 ### 9. Library sync, download improvements and caching
-- [ ] Cold start reads from cache instantly.
-- [ ] Sync resumes after app restart.
-- [ ] Database migrations covered by unit tests.
-- [ ] Download TV Show function
-- [ ] Download TV Show Season function 
-- [ ] Auto Download Subitles when downloading any video
-- [ ] Sync watched status and playback time for videos watched offline to jellyfin
-- [ ] Phone Back button functionality
+- [x] Cold start reads from cache instantly.
+- [x] Sync resumes after app restart.
+- [x] Database migrations covered by unit tests.
+- [x] Download TV Show function
+- [x] Download TV Show Season function 
+- [x] Auto Download Subitles when downloading any video
+- [x] Sync watched status and playback time for videos watched offline to jellyfin
+- [x] Phone Back button functionality
+- [x] When the user performs a downward swipe gesture at the top of the app screen, the app should trigger a manual refresh to resync its data with the Jellyfin server.
 
 ### 10. Jellyseerr requests
 - [ ] Create request and observe status transitions.

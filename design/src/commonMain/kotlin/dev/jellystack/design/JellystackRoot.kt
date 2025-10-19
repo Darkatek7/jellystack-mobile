@@ -88,6 +88,7 @@ import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailContent
+import dev.jellystack.design.jellyfin.SeasonEpisodes
 import dev.jellystack.design.jellyfin.buildSeasonEpisodes
 import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
@@ -225,6 +226,7 @@ fun JellystackRoot(
     var currentTab by remember { mutableStateOf(JellystackTab.Home) }
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
     var detailJob by remember { mutableStateOf<Job?>(null) }
+    var bulkDownloadJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val streamSelector = remember { PlaybackStreamSelector() }
     val downloadSourceResolver = remember { JellyfinPlaybackSourceResolver() }
@@ -307,6 +309,26 @@ fun JellystackRoot(
         activePlaybackForDetail?.subtitleTrack
             ?: availableSubtitleTracks.firstOrNull { it.id == preferredSubtitleTrackId }
 
+    val loadedDetail = detailState as? JellyfinDetailUiState.Loaded
+    val detailDownloadStatus = loadedDetail?.let { downloadStatuses[it.item.id] }
+    val detailEpisodes =
+        if (loadedDetail != null) {
+            findEpisodesForDetail(loadedDetail, browseState.libraryItems)
+        } else {
+            emptyList()
+        }
+    val detailSeasonGroups =
+        if (loadedDetail != null) {
+            buildSeasonEpisodes(detailEpisodes)
+        } else {
+            emptyList()
+        }
+    val detailAllEpisodes =
+        if (loadedDetail != null) {
+            detailSeasonGroups.flatMap { it.episodes }
+        } else {
+            emptyList()
+        }
     val serverUiState =
         ServerManagementUiState(
             servers = managedServers,
@@ -348,29 +370,48 @@ fun JellystackRoot(
     suspend fun enqueueDownloadRequests(
         manager: OfflineDownloadManager,
         requests: List<DownloadRequest>,
-    ) {
-        if (requests.isEmpty()) return
+    ): Int {
+        if (requests.isEmpty()) return 0
         val snapshot = downloadStatuses
+        var enqueued = 0
         requests.forEach { request ->
             val status = snapshot[request.mediaId]
             if (status !is DownloadStatus.InProgress && status !is DownloadStatus.Queued && status !is DownloadStatus.Completed) {
                 manager.enqueue(request)
+                enqueued += 1
                 JellystackLog.d("Queued offline download for ${request.mediaId}")
             }
         }
+        return enqueued
     }
 
-    suspend fun queueDownloadFor(
+    suspend fun enqueueDirectDownload(
         item: JellyfinItem,
         detail: JellyfinItemDetail,
         environment: JellyfinEnvironment,
         manager: OfflineDownloadManager,
-    ) {
+        showErrors: Boolean = true,
+    ): Boolean {
         val playbackRequest = PlaybackRequest.from(item, detail)
-        val selection = streamSelector.select(playbackRequest.mediaSources)
+        if (playbackRequest.mediaSources.isEmpty()) {
+            if (showErrors) {
+                serverErrorMessage = "No playable source available for offline download."
+            }
+            return false
+        }
+        val selection =
+            runCatching { streamSelector.select(playbackRequest.mediaSources) }
+                .getOrElse {
+                    if (showErrors) {
+                        serverErrorMessage = "Unable to determine a playback source for offline download."
+                    }
+                    return false
+                }
         if (selection.mode != PlaybackMode.DIRECT) {
-            serverErrorMessage = "Offline downloads require a direct play source."
-            return
+            if (showErrors) {
+                serverErrorMessage = "Offline downloads require a direct play source."
+            }
+            return false
         }
         val resolved =
             downloadSourceResolver.resolve(
@@ -380,7 +421,66 @@ fun JellystackRoot(
                 startPositionMs = 0L,
             )
         val requests = buildDownloadRequests(item, playbackRequest, selection, resolved, environment)
-        enqueueDownloadRequests(manager, requests)
+        val enqueued = enqueueDownloadRequests(manager, requests)
+        return enqueued > 0
+    }
+
+    suspend fun queueDownloadsForEpisodes(
+        episodes: List<JellyfinItem>,
+        environment: JellyfinEnvironment,
+        manager: OfflineDownloadManager,
+    ): Int {
+        if (episodes.isEmpty()) return 0
+        val uniqueEpisodes = episodes.distinctBy { it.id }
+        var queuedCount = 0
+        for (episode in uniqueEpisodes) {
+            val status = downloadStatuses[episode.id]
+            if (status is DownloadStatus.InProgress || status is DownloadStatus.Queued || status is DownloadStatus.Completed) {
+                continue
+            }
+            val detail =
+                try {
+                    browseRepository.getItemDetail(episode.id, forceRefresh = true)
+                } catch (t: Throwable) {
+                    JellystackLog.e("Failed to load detail for ${episode.id}", t)
+                    null
+                } ?: continue
+            if (detail.mediaSources.isEmpty()) {
+                continue
+            }
+            val queued = enqueueDirectDownload(episode, detail, environment, manager, showErrors = false)
+            if (queued) {
+                queuedCount += 1
+            }
+        }
+        return queuedCount
+    }
+
+    suspend fun queueDownloadFor(
+        item: JellyfinItem,
+        detail: JellyfinItemDetail,
+        environment: JellyfinEnvironment,
+        manager: OfflineDownloadManager,
+    ): Boolean {
+        val playbackRequest = PlaybackRequest.from(item, detail)
+        if (playbackRequest.mediaSources.isEmpty()) {
+            val episodeCandidates =
+                when {
+                    item.type.equals("Series", ignoreCase = true) -> browseRepository.episodesForSeries(item.id)
+                    item.type.equals("Season", ignoreCase = true) -> browseRepository.episodesForSeason(item.id)
+                    else -> emptyList()
+                }
+            if (episodeCandidates.isEmpty()) {
+                serverErrorMessage = "No episodes available for offline download yet."
+                return false
+            }
+            val queued = queueDownloadsForEpisodes(episodeCandidates, environment, manager)
+            if (queued == 0) {
+                serverErrorMessage = "Episodes already downloaded or queued."
+            }
+            return queued > 0
+        }
+        return enqueueDirectDownload(item, detail, environment, manager, showErrors = true)
     }
     val queueDownloadAction: (JellyfinItem, JellyfinItemDetail) -> Unit = { item, detail ->
         val manager = offlineDownloadManager
@@ -390,6 +490,7 @@ fun JellystackRoot(
         } else if (manager == null) {
             serverErrorMessage = "Offline downloads unavailable on this device."
         } else {
+            serverErrorMessage = null
             coroutineScope.launch {
                 val environment = environmentProvider.current()
                 if (environment == null) {
@@ -401,6 +502,73 @@ fun JellystackRoot(
             }
         }
     }
+
+    val downloadSeriesAction: (() -> Unit)? =
+        if (loadedDetail != null && detailSeasonGroups.isNotEmpty()) {
+            {
+                val manager = offlineDownloadManager
+                when {
+                    manager == null -> serverErrorMessage = "Offline downloads unavailable on this device."
+                    detailAllEpisodes.isEmpty() -> serverErrorMessage = "No episodes available to download."
+                    bulkDownloadJob?.isActive == true -> Unit
+                    else -> {
+                        serverErrorMessage = null
+                        bulkDownloadJob =
+                            coroutineScope.launch {
+                                try {
+                                    val environment = environmentProvider.current()
+                                    if (environment == null) {
+                                        serverErrorMessage = "Connect a Jellyfin server to manage downloads."
+                                        isSettingsOpen = true
+                                        return@launch
+                                    }
+                                    val queued = queueDownloadsForEpisodes(detailAllEpisodes, environment, manager)
+                                    if (queued == 0) {
+                                        serverErrorMessage = "Series already downloaded or queued."
+                                    }
+                                } finally {
+                                    bulkDownloadJob = null
+                                }
+                            }
+                    }
+                }
+            }
+        } else {
+            null
+        }
+    val downloadSeasonAction: ((SeasonEpisodes) -> Unit)? =
+        if (loadedDetail != null && detailSeasonGroups.isNotEmpty()) {
+            { season ->
+                val manager = offlineDownloadManager
+                when {
+                    manager == null -> serverErrorMessage = "Offline downloads unavailable on this device."
+                    season.episodes.isEmpty() -> serverErrorMessage = "No episodes available to download."
+                    bulkDownloadJob?.isActive == true -> Unit
+                    else -> {
+                        serverErrorMessage = null
+                        bulkDownloadJob =
+                            coroutineScope.launch {
+                                try {
+                                    val environment = environmentProvider.current()
+                                    if (environment == null) {
+                                        serverErrorMessage = "Connect a Jellyfin server to manage downloads."
+                                        isSettingsOpen = true
+                                        return@launch
+                                    }
+                                    val queued = queueDownloadsForEpisodes(season.episodes, environment, manager)
+                                    if (queued == 0) {
+                                        serverErrorMessage = "Season already downloaded or queued."
+                                    }
+                                } finally {
+                                    bulkDownloadJob = null
+                                }
+                            }
+                    }
+                }
+            }
+        } else {
+            null
+        }
 
     val onSelectLibrary: (String) -> Unit = browseCoordinator::selectLibrary
     val onRefreshLibraries: () -> Unit = { browseCoordinator.bootstrap(forceRefresh = true) }
@@ -669,9 +837,6 @@ fun JellystackRoot(
                             }
 
                         JellystackScreen.Detail -> {
-                            val detailDownloadStatus =
-                                (detailState as? JellyfinDetailUiState.Loaded)
-                                    ?.let { downloadStatuses[it.item.id] }
                             DetailContent(
                                 state = detailState,
                                 libraryItems = browseState.libraryItems,
@@ -682,6 +847,8 @@ fun JellystackRoot(
                                 onPauseDownload = pauseDownload,
                                 onResumeDownload = resumeDownload,
                                 onRemoveDownload = removeDownload,
+                                onDownloadSeries = downloadSeriesAction,
+                                onDownloadSeason = downloadSeasonAction,
                                 audioTracks = availableAudioTracks,
                                 selectedAudioTrack = selectedAudioTrack,
                                 onSelectAudioTrack = { track ->
@@ -1032,6 +1199,8 @@ private fun DetailContent(
     onPauseDownload: (String) -> Unit = {},
     onResumeDownload: (String) -> Unit = {},
     onRemoveDownload: (String) -> Unit = {},
+    onDownloadSeries: (() -> Unit)? = null,
+    onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
     audioTracks: List<AudioTrack> = emptyList(),
     selectedAudioTrack: AudioTrack? = null,
     onSelectAudioTrack: (AudioTrack) -> Unit = {},
@@ -1092,8 +1261,8 @@ private fun DetailContent(
                 onPauseDownload = { onPauseDownload(state.item.id) },
                 onResumeDownload = { onResumeDownload(state.item.id) },
                 onRemoveDownload = { onRemoveDownload(state.item.id) },
-                onDownloadSeries = null,
-                onDownloadSeason = null,
+                onDownloadSeries = onDownloadSeries,
+                onDownloadSeason = onDownloadSeason,
                 audioTracks = audioTracks,
                 selectedAudioTrack = selectedAudioTrack,
                 onSelectAudioTrack = onSelectAudioTrack,
