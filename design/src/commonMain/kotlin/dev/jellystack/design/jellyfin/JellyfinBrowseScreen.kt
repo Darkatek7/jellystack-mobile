@@ -1436,6 +1436,7 @@ internal fun JellyfinDetailContent(
     baseUrl: String?,
     accessToken: String?,
     seasons: List<SeasonEpisodes>,
+    isEpisode: Boolean,
     onPlay: () -> Unit,
     downloadStatus: DownloadStatus? = null,
     onQueueDownload: () -> Unit,
@@ -1444,6 +1445,7 @@ internal fun JellyfinDetailContent(
     onRemoveDownload: () -> Unit = {},
     onDownloadSeries: (() -> Unit)? = null,
     onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
+    onViewSeries: (() -> Unit)? = null,
     audioTracks: List<AudioTrack> = emptyList(),
     selectedAudioTrack: AudioTrack? = null,
     onSelectAudioTrack: (AudioTrack) -> Unit = {},
@@ -1566,10 +1568,21 @@ internal fun JellyfinDetailContent(
                 color = statusColor,
             )
         }
-        onDownloadSeries?.let { downloadAll ->
-            if (seasons.isNotEmpty()) {
-                TextButton(onClick = downloadAll) {
-                    Text("Download series")
+        if (isEpisode) {
+            detail.overview
+                ?.takeIf { it.isNotBlank() }
+                ?.let { overview ->
+                    Text(
+                        text = overview,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+        } else {
+            onDownloadSeries?.let { downloadAll ->
+                if (seasons.isNotEmpty()) {
+                    TextButton(onClick = downloadAll) {
+                        Text("Download series")
+                    }
                 }
             }
         }
@@ -1579,16 +1592,24 @@ internal fun JellyfinDetailContent(
                     text = "Audio tracks",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    audioTracks.forEach { track ->
-                        FilterChip(
-                            selected = selectedAudioTrack?.id == track.id,
-                            onClick = { onSelectAudioTrack(track) },
-                            label = { Text(audioTrackLabel(track)) },
-                        )
+                if (isEpisode) {
+                    AudioTrackDropdown(
+                        tracks = audioTracks,
+                        selectedTrack = selectedAudioTrack ?: audioTracks.first(),
+                        onSelect = onSelectAudioTrack,
+                    )
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        audioTracks.forEach { track ->
+                            FilterChip(
+                                selected = selectedAudioTrack?.id == track.id,
+                                onClick = { onSelectAudioTrack(track) },
+                                label = { Text(audioTrackLabel(track)) },
+                            )
+                        }
                     }
                 }
             }
@@ -1599,21 +1620,29 @@ internal fun JellyfinDetailContent(
                     text = "Subtitles",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = selectedSubtitleTrack == null,
-                        onClick = { onSelectSubtitleTrack(null) },
-                        label = { Text("Off") },
+                if (isEpisode) {
+                    SubtitleTrackDropdown(
+                        tracks = subtitleTracks,
+                        selectedTrack = selectedSubtitleTrack,
+                        onSelect = onSelectSubtitleTrack,
                     )
-                    subtitleTracks.forEach { track ->
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         FilterChip(
-                            selected = selectedSubtitleTrack?.id == track.id,
-                            onClick = { onSelectSubtitleTrack(track) },
-                            label = { Text(subtitleTrackLabel(track)) },
+                            selected = selectedSubtitleTrack == null,
+                            onClick = { onSelectSubtitleTrack(null) },
+                            label = { Text("Off") },
                         )
+                        subtitleTracks.forEach { track ->
+                            FilterChip(
+                                selected = selectedSubtitleTrack?.id == track.id,
+                                onClick = { onSelectSubtitleTrack(track) },
+                                label = { Text(subtitleTrackLabel(track)) },
+                            )
+                        }
                     }
                 }
             }
@@ -1625,10 +1654,19 @@ internal fun JellyfinDetailContent(
             )
         }
         if (!detail.overview.isNullOrBlank()) {
-            Text(
-                text = detail.overview!!,
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            if (!isEpisode) {
+                Text(
+                    text = detail.overview!!,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+        if (isEpisode) {
+            onViewSeries?.let { openSeries ->
+                TextButton(onClick = openSeries) {
+                    Text("View TV Show")
+                }
+            }
         }
         SeasonEpisodeSelector(
             seasons = seasons,
@@ -1803,6 +1841,92 @@ private fun SeasonEpisodeSelector(
                         accessToken = accessToken,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun AudioTrackDropdown(
+    tracks: List<AudioTrack>,
+    selectedTrack: AudioTrack?,
+    onSelect: (AudioTrack) -> Unit,
+) {
+    var expanded by remember(tracks) { mutableStateOf(false) }
+    val current = selectedTrack ?: tracks.firstOrNull()
+    val currentLabel = current?.let { audioTrackLabel(it) }.orEmpty()
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+    ) {
+        OutlinedTextField(
+            value = currentLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Audio track") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier =
+                Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            tracks.forEach { track ->
+                DropdownMenuItem(
+                    text = { Text(audioTrackLabel(track)) },
+                    onClick = {
+                        onSelect(track)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SubtitleTrackDropdown(
+    tracks: List<SubtitleTrack>,
+    selectedTrack: SubtitleTrack?,
+    onSelect: (SubtitleTrack?) -> Unit,
+) {
+    var expanded by remember(tracks) { mutableStateOf(false) }
+    val currentLabel = selectedTrack?.let { subtitleTrackLabel(it) } ?: "Off"
+    val options = remember(tracks) { listOf<SubtitleTrack?>(null) + tracks }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+    ) {
+        OutlinedTextField(
+            value = currentLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Subtitles") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier =
+                Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { track ->
+                DropdownMenuItem(
+                    text = { Text(track?.let { subtitleTrackLabel(it) } ?: "Off") },
+                    onClick = {
+                        onSelect(track)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
             }
         }
     }

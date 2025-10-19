@@ -334,6 +334,8 @@ fun JellystackRoot(
         } else {
             emptyList()
         }
+    val isEpisodeDetail =
+        loadedDetail?.item?.type?.equals("Episode", ignoreCase = true) == true
     val serverUiState =
         ServerManagementUiState(
             servers = managedServers,
@@ -509,7 +511,7 @@ fun JellystackRoot(
     }
 
     val downloadSeriesAction: (() -> Unit)? =
-        if (loadedDetail != null && detailSeasonGroups.isNotEmpty()) {
+        if (loadedDetail != null && detailSeasonGroups.isNotEmpty() && !isEpisodeDetail) {
             {
                 val manager = offlineDownloadManager
                 when {
@@ -637,6 +639,16 @@ fun JellystackRoot(
         currentScreen = JellystackScreen.Detail
         loadDetail(item, false)
     }
+
+    val viewSeriesAction: (() -> Unit)? =
+        if (loadedDetail != null && isEpisodeDetail) {
+            {
+                val target = loadedDetail.item.toSeriesNavigationTarget()
+                loadDetail(target, false)
+            }
+        } else {
+            null
+        }
 
     val submitServer = submitServer@{
         if (isSavingServer) return@submitServer
@@ -867,6 +879,7 @@ fun JellystackRoot(
                                 state = detailState,
                                 libraryItems = browseState.libraryItems,
                                 knownEpisodes = detailEpisodeCache,
+                                onViewSeries = viewSeriesAction,
                                 onRetry = onRetryDetail,
                                 onPlay = playbackAction,
                                 downloadStatus = detailDownloadStatus,
@@ -1221,6 +1234,7 @@ private fun DetailContent(
     state: JellyfinDetailUiState,
     libraryItems: List<JellyfinItem>,
     knownEpisodes: List<JellyfinItem>,
+    onViewSeries: (() -> Unit)? = null,
     onRetry: () -> Unit,
     onPlay: (JellyfinItem, JellyfinItemDetail) -> Unit,
     downloadStatus: DownloadStatus? = null,
@@ -1286,11 +1300,13 @@ private fun DetailContent(
                     )
                 }
             val seasonGroups = remember(episodes) { buildSeasonEpisodes(episodes) }
+            val isEpisode = state.item.type.equals("Episode", ignoreCase = true)
             JellyfinDetailContent(
                 detail = state.detail,
                 baseUrl = state.imageBaseUrl,
                 accessToken = state.imageAccessToken,
                 seasons = seasonGroups,
+                isEpisode = isEpisode,
                 onPlay = { onPlay(state.item, state.detail) },
                 downloadStatus = downloadStatus,
                 onQueueDownload = { onQueueDownload(state.item, state.detail) },
@@ -1299,6 +1315,7 @@ private fun DetailContent(
                 onRemoveDownload = { onRemoveDownload(state.item.id) },
                 onDownloadSeries = onDownloadSeries,
                 onDownloadSeason = onDownloadSeason,
+                onViewSeries = if (isEpisode) onViewSeries else null,
                 audioTracks = audioTracks,
                 selectedAudioTrack = selectedAudioTrack,
                 onSelectAudioTrack = onSelectAudioTrack,
@@ -1344,6 +1361,22 @@ private fun findEpisodesForDetail(
                     episode.seriesId?.let { it in targetIds } == true
             matchesName || matchesId
         }.toList()
+}
+
+private fun JellyfinItem.toSeriesNavigationTarget(): JellyfinItem {
+    val targetId = seriesId ?: parentId ?: id
+    return copy(
+        id = targetId,
+        type = "Series",
+        name = seriesName ?: name,
+        sortName = sortName ?: seriesName,
+        seriesId = targetId,
+        parentId = null,
+        seasonId = null,
+        indexNumber = null,
+        parentIndexNumber = null,
+        episodeTitle = null,
+    )
 }
 
 private fun List<AudioTrack>.defaultAudioTrackId(): String? = firstOrNull { it.isDefault }?.id ?: firstOrNull()?.id
