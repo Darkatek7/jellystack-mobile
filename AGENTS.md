@@ -1,134 +1,85 @@
-# AGENTS.md
+# Cloud Build Setup for Kotlin Multiplatform (Android/iOS)
 
-## Overview
-This repository is a multi-module Kotlin project targeting Android and iOS clients plus shared libraries.  
-All automation, CI, and AI actions must run from the repository root and invoke the Gradle Wrapper (`./gradlew`).
-
----
-
-## Module map
-- `app-android`: Android application module.
-- `app-ios`: Shared Kotlin code prepared for the iOS target.
-- `shared-core`, `shared-database`, `shared-network`: Kotlin Multiplatform shared logic.
-- `players`: Sample feature module used in multiple apps.
+## Purpose
+This guide ensures that Gradle builds run correctly in a clean cloud CI environment where Android SDK and command-line tools are not preinstalled.
 
 ---
 
-## Environment
-- Use **JDK 17**.
-- Android SDK must be available through `ANDROID_SDK_ROOT` or `ANDROID_HOME`.
-- Required SDK packages:
-  - `platforms;android-34`
-  - `build-tools;34.0.0`
-  - `cmdline-tools;latest`
-- Required command-line tools: `sdkmanager`, `avdmanager`.
-- Kotlin native targets rely on a macOS host when assembling iOS binaries; Linux agents may build only JVM and Android variants.
+## Prerequisites
+- JDK 17 installed and available on PATH
+- Unix-like shell (Linux or macOS)
+- Internet access to download Android SDK components
 
-### Validation
+---
+
+## Environment Setup Script
+
+Save the following as `setup-android-env.sh` and execute before running Gradle tasks.
+
 ```bash
-java -version   # must report version 17
-sdkmanager --list | grep "android-34"
-```
-
----
-
-## Setup
-```bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Verify JDK 17
-java -version 2>&1 | grep 'version "17' >/dev/null || {
-  echo "JDK 17 required."
-  exit 1
-}
+java -version 2>&1 | grep 'version "17' >/dev/null || { echo "JDK 17 required."; exit 1; }
 
-# Define SDK root
+# SDK root
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
-export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-mkdir -p "$ANDROID_SDK_ROOT"
+export ANDROID_HOME="$ANDROID_SDK_ROOT"
+mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
 
-# Ensure PATH includes SDK tools
-export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-
-# Check for sdkmanager
-if ! command -v sdkmanager >/dev/null; then
-  echo "Android cmdline-tools missing under $ANDROID_SDK_ROOT/cmdline-tools/latest"
-  exit 1
+# Install command-line tools if missing
+if [ ! -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+  echo "Downloading Android command-line tools..."
+  curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/clt.zip
+  unzip -q /tmp/clt.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+  mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
 fi
 
-# Accept licenses and install required packages
-yes | sdkmanager --licenses
-sdkmanager "cmdline-tools;latest" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+# Update PATH
+export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
-# Write local.properties bound to this workspace
+# Accept licenses and install required packages
+yes | sdkmanager --licenses >/dev/null
+sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null
+
+# Write local.properties
 printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
+
+# Ensure gradlew is executable
+chmod +x gradlew
+
+echo "Android SDK environment ready."
 ```
 
 ---
 
-## Commands
+## Build Commands
 
-### Format and build
+### Format and Build
 ```bash
 ./gradlew spotlessCheck build
 ```
 
-### Lint and static analysis
+### Lint and Static Analysis
 ```bash
 ./gradlew lint detekt
 ```
 
-### Unit tests
+### Unit Tests
 ```bash
 ./gradlew test
 ```
 
-### Instrumented tests
-```bash
-./gradlew connectedAndroidTest
-```
-
-### Full verification (Android only on non-macOS hosts)
+### Full Android Verification
 ```bash
 ./gradlew spotlessCheck lint detekt test build
 ```
 
 ---
 
-## Java toolchain
-The build must use Java 17. Enforce via Gradle toolchains:
-
-**`build.gradle.kts` (root)**
-```kotlin
-java {
-  toolchain {
-    languageVersion.set(JavaLanguageVersion.of(17))
-  }
-}
-```
-
----
-
-## Rules
-- Run `./gradlew spotlessCheck build` before any commit, merge, or automated change.
-- Always execute the **Setup** section before any Gradle command.
-- Use the full verification command before tagging a release.
-- If any Gradle task fails, stop immediately and surface the Gradle log.
-- Do not bypass the Gradle Wrapper or edit SDK paths.
-- Generate or refresh `local.properties` on every run; do not commit it.
-- Prefer cached Gradle dependencies to reduce build time.
-- If `sdkmanager` is unavailable, fail fast with a clear message.
-
----
-
-## Git hygiene
-Add this to `.gitignore`:
-```
-local.properties
-```
-
----
-
 ## Notes
-Assume a Unix-like shell environment.  
-Always execute commands from the repository root unless a module readme specifies otherwise.
+- Execute from repository root.
+- macOS required for iOS targets.
+- Do not commit `local.properties`.
+- Prefer cached Gradle dependencies to reduce CI time.
