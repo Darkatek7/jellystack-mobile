@@ -6,6 +6,10 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.ServerRepositoryEnvironmentProvider
 import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
+import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
+import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
+import dev.jellystack.core.jellyseerr.JellyseerrRepository
+import dev.jellystack.core.jellyseerr.ServerRepositoryJellyseerrEnvironmentProvider
 import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.security.SecureStore
 import dev.jellystack.core.security.SecureStoreFactory
@@ -15,6 +19,7 @@ import dev.jellystack.core.security.SecureStoreLogger
 import dev.jellystack.core.security.SecureStoreNapierLogger
 import dev.jellystack.core.server.ServerConnectivity
 import dev.jellystack.core.server.ServerConnectivityChecker
+import dev.jellystack.core.server.ServerCredentialVault
 import dev.jellystack.core.server.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -38,10 +43,14 @@ fun coreModule(): Module =
         }
         single { ServerConfigRepository(secureStore = get()) }
         single<ServerConnectivity> { ServerConnectivityChecker() }
-        single { ServerRepository(store = get(), connectivity = get()) }
+        single { ServerCredentialVault(get()) }
+        single { ServerRepository(store = get(), connectivity = get(), credentialVault = get()) }
         single<JellyfinEnvironmentProvider> { ServerRepositoryEnvironmentProvider(get()) }
+        single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
         single<JellyfinBrowseApiFactory> { defaultJellyfinBrowseApiFactory() }
         single { JellyfinBrowseRepository(get(), get(), get(), get(), get()) }
+        single { JellyseerrRepository() }
+        single { JellyseerrAuthenticator() }
         single { ThemePreferenceRepository(get()) }
     }
 

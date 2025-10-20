@@ -1,5 +1,6 @@
 package dev.jellystack.design
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
@@ -29,7 +31,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +83,16 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
+import dev.jellystack.core.jellyseerr.JellyseerrAuthRequest
+import dev.jellystack.core.jellyseerr.JellyseerrAuthenticationException
+import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
+import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
+import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
+import dev.jellystack.core.jellyseerr.JellyseerrMediaType
+import dev.jellystack.core.jellyseerr.JellyseerrRepository
+import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
+import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
+import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.server.ConnectivityException
@@ -86,10 +101,12 @@ import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerRegistration
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
+import dev.jellystack.core.server.StoredCredential
 import dev.jellystack.design.jellyfin.JellyfinBrowseScreen
 import dev.jellystack.design.jellyfin.JellyfinDetailContent
 import dev.jellystack.design.jellyfin.SeasonEpisodes
 import dev.jellystack.design.jellyfin.buildSeasonEpisodes
+import dev.jellystack.design.jellyseerr.JellyseerrRequestsScreen
 import dev.jellystack.design.theme.JellystackTheme
 import dev.jellystack.design.theme.LocalThemeController
 import dev.jellystack.design.theme.ThemeController
@@ -120,6 +137,11 @@ private enum class JellystackTab {
     Home,
     Library,
     Media,
+}
+
+private enum class ServerFormType {
+    JELLYFIN,
+    JELLYSEERR,
 }
 
 private sealed interface JellyfinDetailUiState {
@@ -158,13 +180,19 @@ private fun JellyfinDetailUiState.withImageInfo(
     }
 
 private data class ServerFormState(
+    val type: ServerFormType = ServerFormType.JELLYFIN,
     val name: String = "",
     val baseUrl: String = "",
     val username: String = "",
     val password: String = "",
+    val jellyfinServerId: String? = null,
 ) {
     val isValid: Boolean
-        get() = name.isNotBlank() && baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+        get() =
+            when (type) {
+                ServerFormType.JELLYFIN -> name.isNotBlank() && baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+                ServerFormType.JELLYSEERR -> baseUrl.isNotBlank() && password.isNotBlank() && jellyfinServerId != null
+            }
 }
 
 private data class ServerManagementUiState(
@@ -233,6 +261,18 @@ fun JellystackRoot(
     val downloadSourceResolver = remember { JellyfinPlaybackSourceResolver() }
 
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
+    val jellyseerrRepository = remember { koin.get<JellyseerrRepository>() }
+    val jellyseerrAuthenticator = remember { koin.get<JellyseerrAuthenticator>() }
+    val jellyseerrEnvironmentProvider = remember { koin.get<JellyseerrEnvironmentProvider>() }
+    val jellyseerrCoordinator =
+        remember(jellyseerrRepository, jellyseerrEnvironmentProvider, coroutineScope) {
+            JellyseerrRequestsCoordinator(
+                repository = jellyseerrRepository,
+                environmentProvider = jellyseerrEnvironmentProvider,
+                scope = coroutineScope,
+            )
+        }
+    val jellyseerrState by jellyseerrCoordinator.state.collectAsState()
     val serverRepository = remember { koin.get<ServerRepository>() }
     val managedServers by serverRepository.observeServers().collectAsState()
     val browseCoordinator =
@@ -654,43 +694,99 @@ fun JellystackRoot(
         if (isSavingServer) return@submitServer
         val form = serverFormState
         if (!form.isValid) {
-            serverErrorMessage = "All fields are required"
+            serverErrorMessage = "Complete all required fields before continuing."
             return@submitServer
         }
         coroutineScope.launch {
             isSavingServer = true
             serverErrorMessage = null
-            JellystackLog.d("Submitting Jellyfin server connection to ${form.baseUrl} as ${form.username}")
-            try {
-                serverRepository.register(
-                    ServerRegistration(
-                        type = ServerType.JELLYFIN,
-                        name = form.name,
-                        baseUrl = form.baseUrl,
-                        credentials =
-                            CredentialInput.Jellyfin(
-                                username = form.username,
-                                password = form.password,
-                                deviceId = null,
+            when (form.type) {
+                ServerFormType.JELLYFIN -> {
+                    val normalizedUrl = normalizeServerBaseUrl(form.baseUrl)
+                    JellystackLog.d("Submitting Jellyfin server connection to $normalizedUrl as ${form.username}")
+                    try {
+                        serverRepository.register(
+                            ServerRegistration(
+                                type = ServerType.JELLYFIN,
+                                name = form.name,
+                                baseUrl = normalizedUrl,
+                                credentials =
+                                    CredentialInput.Jellyfin(
+                                        username = form.username,
+                                        password = form.password,
+                                        deviceId = null,
+                                    ),
                             ),
-                    ),
-                )
-                browseCoordinator.bootstrap(forceRefresh = true)
-                serverFormState = ServerFormState()
-                showAddServerDialog = false
-                JellystackLog.d("Jellyfin server connected: ${form.baseUrl}")
-            } catch (t: Throwable) {
-                serverErrorMessage =
-                    when (t) {
-                        is ConnectivityException ->
-                            listOfNotNull(t.message, t.cause?.message)
-                                .joinToString(separator = ": ")
-                                .ifBlank { "Unable to connect to server" }
-                        else -> t.message ?: "Unable to connect to server"
+                        )
+                        browseCoordinator.bootstrap(forceRefresh = true)
+                        serverFormState = ServerFormState()
+                        showAddServerDialog = false
+                        JellystackLog.d("Jellyfin server connected: $normalizedUrl")
+                    } catch (t: Throwable) {
+                        serverErrorMessage = t.connectivityErrorMessage()
+                        JellystackLog.e("Failed to connect to Jellyfin server $normalizedUrl: $serverErrorMessage", t)
+                    } finally {
+                        isSavingServer = false
                     }
-                JellystackLog.e("Failed to connect to Jellyfin server ${form.baseUrl}: $serverErrorMessage", t)
-            } finally {
-                isSavingServer = false
+                }
+                ServerFormType.JELLYSEERR -> {
+                    val linkedServerId = form.jellyfinServerId
+                    val linkedServer =
+                        managedServers.firstOrNull { it.id == linkedServerId && it.type == ServerType.JELLYFIN }
+                    val linkedCredential = linkedServer?.credentials as? StoredCredential.Jellyfin
+                    if (linkedServer == null || linkedCredential == null) {
+                        serverErrorMessage = "Select a Jellyfin server first."
+                        isSavingServer = false
+                        return@launch
+                    }
+                    val components = parseServerUrlComponents(linkedServer.baseUrl)
+                    if (components == null) {
+                        serverErrorMessage = "Unable to parse Jellyfin server URL ${linkedServer.baseUrl}."
+                        isSavingServer = false
+                        return@launch
+                    }
+                    val normalizedUrl = normalizeServerBaseUrl(form.baseUrl)
+                    JellystackLog.d("Attempting Jellyseerr auto-auth at $normalizedUrl using ${linkedCredential.username}")
+                    try {
+                        val authResult =
+                            jellyseerrAuthenticator.authenticate(
+                                JellyseerrAuthRequest(
+                                    baseUrl = normalizedUrl,
+                                    username = linkedCredential.username,
+                                    password = form.password,
+                                    hostname = components.hostname,
+                                    port = components.port,
+                                    urlBase = components.urlBase.takeIf { it.isNotEmpty() },
+                                    useSsl = components.useSsl,
+                                    serverType = 2,
+                                ),
+                            )
+                        serverRepository.register(
+                            ServerRegistration(
+                                type = ServerType.JELLYSEERR,
+                                name = form.name.ifBlank { "${linkedServer.name} Requests" },
+                                baseUrl = normalizedUrl,
+                                credentials =
+                                    CredentialInput.ApiKey(
+                                        apiKey = authResult.apiKey,
+                                        userId = authResult.userId?.toString(),
+                                    ),
+                            ),
+                        )
+                        serverFormState = ServerFormState()
+                        showAddServerDialog = false
+                        jellyseerrCoordinator.refresh()
+                        JellystackLog.d("Jellyseerr server connected: $normalizedUrl")
+                    } catch (authError: JellyseerrAuthenticationException) {
+                        serverErrorMessage = authError.message ?: "Unable to authenticate with Jellyseerr."
+                        JellystackLog.e("Jellyseerr authentication failed for $normalizedUrl: $serverErrorMessage", authError)
+                    } catch (t: Throwable) {
+                        serverErrorMessage = t.connectivityErrorMessage()
+                        JellystackLog.e("Failed to connect to Jellyseerr server $normalizedUrl: $serverErrorMessage", t)
+                    } finally {
+                        isSavingServer = false
+                    }
+                }
             }
         }
     }
@@ -866,7 +962,29 @@ fun JellystackRoot(
                                     )
 
                                 JellystackTab.Media ->
-                                    MediaPlaceholder(
+                                    JellyseerrRequestsScreen(
+                                        state = jellyseerrState,
+                                        onSearch = jellyseerrCoordinator::search,
+                                        onClearSearch = jellyseerrCoordinator::clearSearch,
+                                        onSelectFilter = jellyseerrCoordinator::selectFilter,
+                                        onRefresh = jellyseerrCoordinator::refresh,
+                                        onCreateRequest = { item, is4k ->
+                                            val selection =
+                                                if (item.mediaType == JellyseerrMediaType.TV) {
+                                                    JellyseerrCreateSelection.AllSeasons
+                                                } else {
+                                                    null
+                                                }
+                                            jellyseerrCoordinator.submitRequest(item, is4k, selection)
+                                        },
+                                        onDeleteRequest = { summary ->
+                                            jellyseerrCoordinator.deleteRequest(summary.id)
+                                        },
+                                        onRemoveMedia = jellyseerrCoordinator::removeMedia,
+                                        onMessageAcknowledged = jellyseerrCoordinator::acknowledgeMessage,
+                                        onAddServer = {
+                                            isSettingsOpen = true
+                                        },
                                         modifier =
                                             Modifier
                                                 .padding(padding)
@@ -967,6 +1085,22 @@ private fun JellystackPreviewRoot(
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
     var isSettingsOpen by remember { mutableStateOf(false) }
     val browseState = remember { JellyfinHomeState() }
+    val previewRequestsState =
+        remember {
+            JellyseerrRequestsState.Ready(
+                filter = JellyseerrRequestFilter.ALL,
+                requests = emptyList(),
+                counts = null,
+                query = "",
+                searchResults = emptyList(),
+                isSearching = false,
+                isRefreshing = false,
+                isPerformingAction = false,
+                message = null,
+                isAdmin = true,
+                lastUpdated = null,
+            )
+        }
 
     CompositionLocalProvider(LocalThemeController provides themeController) {
         JellystackTheme(isDarkTheme = isDarkTheme) {
@@ -1065,7 +1199,17 @@ private fun JellystackPreviewRoot(
                                     )
 
                                 JellystackTab.Media ->
-                                    MediaPlaceholder(
+                                    JellyseerrRequestsScreen(
+                                        state = previewRequestsState,
+                                        onSearch = {},
+                                        onClearSearch = {},
+                                        onSelectFilter = {},
+                                        onRefresh = {},
+                                        onCreateRequest = { _, _ -> },
+                                        onDeleteRequest = {},
+                                        onRemoveMedia = {},
+                                        onMessageAcknowledged = {},
+                                        onAddServer = { isSettingsOpen = true },
                                         modifier =
                                             Modifier
                                                 .padding(padding)
@@ -1105,6 +1249,7 @@ private fun JellystackPreviewRoot(
 }
 
 @Suppress("FunctionName")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryContent(
     browseState: JellyfinHomeState,
@@ -1139,6 +1284,7 @@ private fun LibraryContent(
 }
 
 @Suppress("FunctionName")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeContent(
     browseState: JellyfinHomeState,
@@ -1159,29 +1305,6 @@ private fun HomeContent(
         showLibraryItems = false,
         modifier = modifier,
     )
-}
-
-@Suppress("FunctionName")
-@Composable
-private fun MediaPlaceholder(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "Media hub coming soon",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = "This tab will connect to Jellyseerr in a future update.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
 }
 
 @Suppress("FunctionName")
@@ -1440,6 +1563,7 @@ private fun SettingsContent(
     onClearServerError: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val jellyfinServers = serverState.servers.filter { it.type == ServerType.JELLYFIN }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier =
@@ -1503,7 +1627,6 @@ private fun SettingsContent(
                 text = "Jellyfin",
                 style = MaterialTheme.typography.titleLarge,
             )
-            val jellyfinServers = serverState.servers.filter { it.type == ServerType.JELLYFIN }
             if (jellyfinServers.isEmpty()) {
                 AssistChip(
                     onClick = onOpenAddServer,
@@ -1539,7 +1662,7 @@ private fun SettingsContent(
                 }
             }
             Button(onClick = onOpenAddServer) {
-                Text("Add Jellyfin server")
+                Text("Add server")
             }
         }
     }
@@ -1548,6 +1671,7 @@ private fun SettingsContent(
             state = serverState.form,
             isSaving = serverState.isSaving,
             errorMessage = serverState.errorMessage,
+            availableJellyfinServers = jellyfinServers,
             onValueChange = onUpdateServerForm,
             onClearError = onClearServerError,
             onDismiss = onDismissAddServer,
@@ -1562,17 +1686,64 @@ private fun AddServerDialog(
     state: ServerFormState,
     isSaving: Boolean,
     errorMessage: String?,
+    availableJellyfinServers: List<ManagedServer>,
     onValueChange: (ServerFormState) -> Unit,
     onClearError: () -> Unit,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
+    var serverMenuExpanded by remember { mutableStateOf(false) }
+    val jellyfinServers = availableJellyfinServers.filter { it.type == ServerType.JELLYFIN }
+    val selectedJellyfinServer = jellyfinServers.firstOrNull { it.id == state.jellyfinServerId }
+    val selectedCredential = selectedJellyfinServer?.credentials as? StoredCredential.Jellyfin
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
-        title = { Text("Connect Jellyfin server") },
+        title = { Text("Connect server") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = state.type == ServerFormType.JELLYFIN,
+                        onClick = {
+                            if (!isSaving) {
+                                passwordVisible = false
+                                onValueChange(
+                                    state.copy(
+                                        type = ServerFormType.JELLYFIN,
+                                        jellyfinServerId = null,
+                                        password = "",
+                                    ),
+                                )
+                                onClearError()
+                            }
+                        },
+                        enabled = !isSaving,
+                        label = { Text("Jellyfin") },
+                    )
+                    FilterChip(
+                        selected = state.type == ServerFormType.JELLYSEERR,
+                        onClick = {
+                            if (!isSaving && jellyfinServers.isNotEmpty()) {
+                                val default = jellyfinServers.first()
+                                val credential = default.credentials as? StoredCredential.Jellyfin
+                                passwordVisible = false
+                                onValueChange(
+                                    state.copy(
+                                        type = ServerFormType.JELLYSEERR,
+                                        jellyfinServerId = default.id,
+                                        username = credential?.username ?: state.username,
+                                        name = if (state.name.isBlank()) "${default.name} Requests" else state.name,
+                                        password = "",
+                                    ),
+                                )
+                                onClearError()
+                            }
+                        },
+                        enabled = !isSaving && jellyfinServers.isNotEmpty(),
+                        label = { Text("Jellyseerr") },
+                    )
+                }
                 OutlinedTextField(
                     value = state.name,
                     onValueChange = {
@@ -1595,26 +1766,99 @@ private fun AddServerDialog(
                     enabled = !isSaving,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Uri),
                 )
-                OutlinedTextField(
-                    value = state.username,
-                    onValueChange = {
-                        onValueChange(state.copy(username = it))
-                        onClearError()
-                    },
-                    label = { Text("Username") },
-                    singleLine = true,
-                    enabled = !isSaving,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                )
+                when (state.type) {
+                    ServerFormType.JELLYFIN -> {
+                        OutlinedTextField(
+                            value = state.username,
+                            onValueChange = {
+                                onValueChange(state.copy(username = it))
+                                onClearError()
+                            },
+                            label = { Text("Username") },
+                            singleLine = true,
+                            enabled = !isSaving,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        )
+                    }
+                    ServerFormType.JELLYSEERR -> {
+                        if (jellyfinServers.isEmpty()) {
+                            Text(
+                                text = "Add a Jellyfin server first to enable automatic Jellyseerr authentication.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Box {
+                                OutlinedTextField(
+                                    value = selectedJellyfinServer?.name ?: "Select Jellyfin server",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    enabled = !isSaving,
+                                    label = { Text("Jellyfin server") },
+                                    singleLine = true,
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDropDown,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable(enabled = !isSaving && jellyfinServers.isNotEmpty()) {
+                                                if (jellyfinServers.isNotEmpty()) {
+                                                    serverMenuExpanded = true
+                                                }
+                                            },
+                                )
+                                DropdownMenu(
+                                    expanded = serverMenuExpanded,
+                                    onDismissRequest = { serverMenuExpanded = false },
+                                ) {
+                                    jellyfinServers.forEach { server ->
+                                        val credential = server.credentials as? StoredCredential.Jellyfin
+                                        DropdownMenuItem(
+                                            text = { Text(server.name) },
+                                            onClick = {
+                                                serverMenuExpanded = false
+                                                onValueChange(
+                                                    state.copy(
+                                                        jellyfinServerId = server.id,
+                                                        username = credential?.username ?: state.username,
+                                                        password = "",
+                                                    ),
+                                                )
+                                                onClearError()
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = selectedCredential?.username ?: state.username,
+                                onValueChange = {},
+                                label = { Text("Jellyfin username") },
+                                singleLine = true,
+                                enabled = false,
+                            )
+                        }
+                    }
+                }
+                val passwordLabel =
+                    if (state.type == ServerFormType.JELLYFIN) {
+                        "Password"
+                    } else {
+                        "Jellyfin password"
+                    }
                 OutlinedTextField(
                     value = state.password,
                     onValueChange = {
                         onValueChange(state.copy(password = it))
                         onClearError()
                     },
-                    label = { Text("Password") },
+                    label = { Text(passwordLabel) },
                     singleLine = true,
-                    enabled = !isSaving,
+                    enabled = !isSaving && (state.type == ServerFormType.JELLYFIN || jellyfinServers.isNotEmpty()),
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
                     trailingIcon = {
@@ -1624,6 +1868,13 @@ private fun AddServerDialog(
                         }
                     },
                 )
+                if (state.type == ServerFormType.JELLYSEERR && jellyfinServers.isNotEmpty()) {
+                    Text(
+                        text = "We'll sign in to Jellyseerr with your Jellyfin account to obtain the API key automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage,
@@ -1643,7 +1894,12 @@ private fun AddServerDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Connecting…")
                 } else {
-                    Text("Connect")
+                    val label =
+                        when (state.type) {
+                            ServerFormType.JELLYFIN -> "Connect Jellyfin"
+                            ServerFormType.JELLYSEERR -> "Connect Jellyseerr"
+                        }
+                    Text(label)
                 }
             }
         },
@@ -1792,3 +2048,96 @@ private fun sanitizeFileSegment(value: String): String {
     val trimmed = sanitized.trim('_')
     return if (trimmed.isBlank()) "file" else trimmed
 }
+
+private data class JellyfinServerComponents(
+    val hostname: String,
+    val port: Int,
+    val urlBase: String,
+    val useSsl: Boolean,
+)
+
+private data class ParsedServerUrl(
+    val scheme: String,
+    val host: String,
+    val explicitPort: Int?,
+    val path: String,
+)
+
+private val SERVER_URL_REGEX =
+    Regex("^(https?)://([^/:?#]+)(?::(\\d+))?([^?#]*)?.*$", RegexOption.IGNORE_CASE)
+
+private fun normalizeServerBaseUrl(url: String): String {
+    val trimmed = url.trim()
+    val parsed = parseServerUrl(trimmed) ?: return trimmed.trimTrailingSlashesPreserveScheme()
+    val defaultPort = if (parsed.scheme == "https") 443 else 80
+    val port = parsed.explicitPort ?: defaultPort
+    val includePort = parsed.explicitPort != null && parsed.explicitPort != defaultPort
+    return buildString {
+        append(parsed.scheme)
+        append("://")
+        append(parsed.host)
+        if (includePort) {
+            append(':')
+            append(port)
+        }
+        if (parsed.path.isNotBlank()) {
+            append(parsed.path)
+        }
+    }
+}
+
+private fun parseServerUrlComponents(baseUrl: String): JellyfinServerComponents? {
+    val parsed = parseServerUrl(baseUrl) ?: return null
+    val defaultPort = if (parsed.scheme == "https") 443 else 80
+    val port = parsed.explicitPort ?: defaultPort
+    return JellyfinServerComponents(
+        hostname = parsed.host,
+        port = port,
+        urlBase = parsed.path,
+        useSsl = parsed.scheme == "https",
+    )
+}
+
+private fun parseServerUrl(url: String): ParsedServerUrl? {
+    val match = SERVER_URL_REGEX.matchEntire(url.trim()) ?: return null
+    val scheme = match.groupValues[1].lowercase()
+    val host = match.groupValues[2]
+    val portValue =
+        match.groupValues
+            .getOrNull(3)
+            ?.takeIf { it.isNotBlank() }
+            ?.toInt()
+    val rawPath = match.groupValues.getOrNull(4) ?: ""
+    val sanitizedPath =
+        rawPath
+            .substringBefore('?')
+            .substringBefore('#')
+            .trimEnd('/')
+            .let { path ->
+                when {
+                    path.isBlank() || path == "/" -> ""
+                    path.startsWith('/') -> path
+                    else -> "/$path"
+                }
+            }
+    return ParsedServerUrl(
+        scheme = scheme,
+        host = host,
+        explicitPort = portValue,
+        path = sanitizedPath,
+    )
+}
+
+private fun String.trimTrailingSlashesPreserveScheme(): String {
+    if (endsWith("://")) return this
+    return trimEnd('/')
+}
+
+private fun Throwable.connectivityErrorMessage(): String =
+    when (this) {
+        is ConnectivityException ->
+            listOfNotNull(message, cause?.message)
+                .joinToString(separator = ": ")
+                .ifBlank { "Unable to connect to server" }
+        else -> message ?: "Unable to connect to server"
+    }

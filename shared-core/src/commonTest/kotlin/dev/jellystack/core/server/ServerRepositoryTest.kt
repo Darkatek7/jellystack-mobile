@@ -1,5 +1,7 @@
 package dev.jellystack.core.server
 
+import dev.jellystack.core.security.SecretValue
+import dev.jellystack.core.security.SecureStore
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import kotlin.test.Test
@@ -18,7 +20,8 @@ class ServerRepositoryTest {
                     accessToken = "token",
                     userId = "user42",
                 )
-            val repo = repository { ConnectivityResult.Success("ok", storedCredential) }
+            val secureStore = FakeSecureStore()
+            val repo = repository(secureStore) { ConnectivityResult.Success("ok", storedCredential) }
 
             val managed =
                 repo.register(
@@ -33,6 +36,7 @@ class ServerRepositoryTest {
             assertEquals("https://media.local", managed.baseUrl)
             assertEquals(storedCredential, managed.credentials)
             assertTrue(repo.currentServers().isNotEmpty())
+            assertEquals("pw", secureStore.peek("servers.${managed.id}.jellyfin.password")?.reveal())
         }
 
     @Test
@@ -113,10 +117,13 @@ class ServerRepositoryTest {
             assertTrue(repo.currentServers().isEmpty())
         }
 
-    private fun repository(resultProvider: (ServerRegistration) -> ConnectivityResult): ServerRepository {
+    private fun repository(
+        secureStore: FakeSecureStore = FakeSecureStore(),
+        resultProvider: (ServerRegistration) -> ConnectivityResult,
+    ): ServerRepository {
         val store = InMemoryServerStore()
         val connectivity = ServerConnectivity { registration -> resultProvider(registration) }
-        return ServerRepository(store, connectivity, clock = FixedClock)
+        return ServerRepository(store, connectivity, ServerCredentialVault(secureStore), clock = FixedClock)
     }
 
     private fun successApiKey(): ConnectivityResult = ConnectivityResult.Success("ok", StoredCredential.ApiKey("abc"))
@@ -147,4 +154,23 @@ private class InMemoryServerStore : ServerStore {
     override suspend fun delete(id: String) {
         items.remove(id)
     }
+}
+
+private class FakeSecureStore : SecureStore {
+    private val items = mutableMapOf<String, SecretValue>()
+
+    override suspend fun write(
+        key: String,
+        value: SecretValue,
+    ) {
+        items[key] = value
+    }
+
+    override suspend fun read(key: String): SecretValue? = items[key]
+
+    override suspend fun remove(key: String) {
+        items.remove(key)
+    }
+
+    fun peek(key: String): SecretValue? = items[key]
 }

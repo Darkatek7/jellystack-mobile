@@ -13,6 +13,7 @@ import kotlinx.datetime.Instant
 class ServerRepository(
     private val store: ServerStore,
     private val connectivity: ServerConnectivity,
+    private val credentialVault: ServerCredentialVault,
     private val clock: Clock = Clock.System,
     private val idGenerator: () -> String = { randomId(16) },
 ) {
@@ -50,6 +51,12 @@ class ServerRepository(
                             updatedAt = now,
                         )
                     store.upsert(record)
+                    when (val input = request.credentials) {
+                        is CredentialInput.Jellyfin -> credentialVault.saveJellyfinPassword(id, input.password)
+                        is CredentialInput.ApiKey -> {
+                            // No-op
+                        }
+                    }
                     refreshServers()
                     record.toManagedServer()
                 }
@@ -59,6 +66,7 @@ class ServerRepository(
     suspend fun remove(id: String) {
         mutex.withLock {
             store.delete(id)
+            credentialVault.removeJellyfinPassword(id)
             refreshServers()
         }
     }
@@ -151,7 +159,7 @@ class ServerRepository(
                     deviceId = null,
                     apiKey = credential.apiKey,
                     accessToken = null,
-                    userId = null,
+                    userId = credential.userId,
                     createdAt = createdAt,
                     updatedAt = updatedAt,
                 )
@@ -170,7 +178,7 @@ class ServerRepository(
                 ServerType.SONARR,
                 ServerType.RADARR,
                 ServerType.JELLYSEERR,
-                -> StoredCredential.ApiKey(apiKey ?: throw IllegalStateException("Missing api key"))
+                -> StoredCredential.ApiKey(apiKey ?: throw IllegalStateException("Missing api key"), userId = userId)
             }
 
         return ManagedServer(
