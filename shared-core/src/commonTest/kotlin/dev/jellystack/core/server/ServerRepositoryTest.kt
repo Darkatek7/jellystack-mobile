@@ -7,6 +7,8 @@ import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ServerRepositoryTest {
@@ -115,6 +117,74 @@ class ServerRepositoryTest {
 
             repo.remove(managed.id)
             assertTrue(repo.currentServers().isEmpty())
+        }
+
+    @Test
+    fun findServerReturnsManagedInstance() =
+        runTest {
+            val storedCredential =
+                StoredCredential.Jellyfin(
+                    username = "demo",
+                    deviceId = "device-1",
+                    accessToken = "token",
+                    userId = "user42",
+                )
+            val repo = repository { ConnectivityResult.Success("ok", storedCredential) }
+
+            val managed =
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Media",
+                        baseUrl = "https://media.local",
+                        credentials = CredentialInput.Jellyfin(username = "demo", password = "pw"),
+                    ),
+                )
+
+            val fetched = repo.findServer(managed.id)
+            assertNotNull(fetched)
+            assertEquals(managed, fetched)
+        }
+
+    @Test
+    fun jellyfinPasswordReturnsSecretOnlyForJellyfinServers() =
+        runTest {
+            val storedCredential =
+                StoredCredential.Jellyfin(
+                    username = "demo",
+                    deviceId = "device-1",
+                    accessToken = "token",
+                    userId = "user42",
+                )
+            val repo =
+                repository { registration ->
+                    when (registration.type) {
+                        ServerType.JELLYFIN -> ConnectivityResult.Success("ok", storedCredential)
+                        else -> ConnectivityResult.Success("ok", StoredCredential.ApiKey("abc"))
+                    }
+                }
+
+            val jellyfin =
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Media",
+                        baseUrl = "https://media.local",
+                        credentials = CredentialInput.Jellyfin(username = "demo", password = "pw"),
+                    ),
+                )
+            val radarr =
+                repo.register(
+                    ServerRegistration(
+                        type = ServerType.RADARR,
+                        name = "Movies",
+                        baseUrl = "https://radarr.local",
+                        credentials = CredentialInput.ApiKey("key"),
+                    ),
+                )
+
+            assertEquals("pw", repo.jellyfinPassword(jellyfin.id)?.reveal())
+            assertNull(repo.jellyfinPassword(radarr.id))
         }
 
     private fun repository(

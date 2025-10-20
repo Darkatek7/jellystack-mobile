@@ -1,5 +1,6 @@
 package dev.jellystack.core.server
 
+import dev.jellystack.core.security.SecretValue
 import io.github.aakira.napier.Napier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,22 @@ class ServerRepository(
     }
 
     fun observeServers(): StateFlow<List<ManagedServer>> = servers.asStateFlow()
+
+    suspend fun findServer(serverId: String): ManagedServer? =
+        store.get(serverId)?.let { record ->
+            runCatching { record.toManagedServer() }
+                .onFailure { error ->
+                    Napier.e(
+                        message = "Failed to load server $serverId",
+                        throwable = error,
+                    )
+                }.getOrNull()
+        }
+
+    suspend fun jellyfinPassword(serverId: String): SecretValue? =
+        findServer(serverId)?.takeIf { it.type == ServerType.JELLYFIN }?.let {
+            credentialVault.readJellyfinPassword(serverId)
+        }
 
     suspend fun register(request: ServerRegistration): ManagedServer =
         mutex.withLock {

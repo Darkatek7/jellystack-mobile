@@ -7,8 +7,8 @@ import dev.jellystack.network.jellyseerr.JellyseerrJellyfinLoginPayload
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.cookies.HttpCookies
 
-class JellyseerrAuthenticator {
-    suspend fun authenticate(request: JellyseerrAuthRequest): JellyseerrAuthenticationResult {
+open class JellyseerrAuthenticator {
+    open suspend fun authenticate(request: JellyseerrAuthRequest): JellyseerrAuthenticationResult {
         val client =
             NetworkClientFactory.create(
                 ClientConfig(
@@ -77,7 +77,15 @@ data class JellyseerrAuthenticationResult(
 class JellyseerrAuthenticationException(
     message: String,
     cause: Throwable? = null,
-) : IllegalStateException(message, cause)
+    val reason: Reason = Reason.UNKNOWN,
+) : IllegalStateException(message, cause) {
+    enum class Reason {
+        UNKNOWN,
+        SERVER_NOT_FOUND,
+        INVALID_LINKED_SERVER,
+        MISSING_JELLYFIN_PASSWORD,
+    }
+}
 
 private inline fun <T> HttpClient.use(block: (HttpClient) -> T): T =
     try {

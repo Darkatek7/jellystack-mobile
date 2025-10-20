@@ -1,4 +1,8 @@
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.nio.channels.FileChannel
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
@@ -60,5 +64,57 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+val bundleJarDeleteAttempts = 120
+val bundleJarDeleteDelayMillis = 1_000L
+
+tasks.matching { it.name.startsWith("bundleLibCompileToJar") }.configureEach {
+    doFirst("jellystackClearLockedJar") {
+        outputs.files.forEach { outputFile ->
+            if (!outputFile.exists() || outputFile.extension != "jar") {
+                return@forEach
+            }
+
+            repeat(bundleJarDeleteAttempts) { attempt ->
+                try {
+                    FileChannel
+                        .open(
+                            outputFile.toPath(),
+                            StandardOpenOption.WRITE,
+                            StandardOpenOption.DELETE_ON_CLOSE,
+                        ).use { }
+
+                    if (Files.exists(outputFile.toPath())) {
+                        Files.deleteIfExists(outputFile.toPath())
+                    }
+
+                    return@forEach
+                } catch (error: Exception) {
+                    if (!outputFile.exists()) {
+                        return@forEach
+                    }
+
+                    if (error is InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw error
+                    }
+
+                    if (attempt == bundleJarDeleteAttempts - 1) {
+                        throw GradleException(
+                            "Unable to remove locked jar ${outputFile.absolutePath}",
+                            error,
+                        )
+                    }
+
+                    logger.info(
+                        "Retrying removal of ${outputFile.absolutePath} after attempt ${attempt + 1}",
+                    )
+
+                    Thread.sleep(bundleJarDeleteDelayMillis)
+                }
+            }
+        }
     }
 }

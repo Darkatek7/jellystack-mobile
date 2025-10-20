@@ -83,9 +83,9 @@ import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.JellyfinHomeState
 import dev.jellystack.core.jellyfin.JellyfinItem
 import dev.jellystack.core.jellyfin.JellyfinItemDetail
-import dev.jellystack.core.jellyseerr.JellyseerrAuthRequest
+import dev.jellystack.core.jellyseerr.JellyfinServerComponents
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticationException
-import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
+import dev.jellystack.core.jellyseerr.JellyseerrAuthenticationException.Reason
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
@@ -93,6 +93,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
+import dev.jellystack.core.jellyseerr.JellyseerrSsoAuthenticator
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.server.ConnectivityException
@@ -139,7 +140,7 @@ private enum class JellystackTab {
     Media,
 }
 
-private enum class ServerFormType {
+internal enum class ServerFormType {
     JELLYFIN,
     JELLYSEERR,
 }
@@ -179,19 +180,24 @@ private fun JellyfinDetailUiState.withImageInfo(
         is JellyfinDetailUiState.Loading -> copy(imageBaseUrl = imageBaseUrl, imageAccessToken = imageAccessToken)
     }
 
-private data class ServerFormState(
+internal data class ServerFormState(
     val type: ServerFormType = ServerFormType.JELLYFIN,
     val name: String = "",
     val baseUrl: String = "",
     val username: String = "",
     val password: String = "",
     val jellyfinServerId: String? = null,
+    val requiresJellyseerrPassword: Boolean = false,
 ) {
     val isValid: Boolean
         get() =
             when (type) {
-                ServerFormType.JELLYFIN -> name.isNotBlank() && baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
-                ServerFormType.JELLYSEERR -> baseUrl.isNotBlank() && password.isNotBlank() && jellyfinServerId != null
+                ServerFormType.JELLYFIN ->
+                    name.isNotBlank() && baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+                ServerFormType.JELLYSEERR ->
+                    baseUrl.isNotBlank() &&
+                        jellyfinServerId != null &&
+                        (!requiresJellyseerrPassword || password.isNotBlank())
             }
 }
 
@@ -262,7 +268,7 @@ fun JellystackRoot(
 
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
     val jellyseerrRepository = remember { koin.get<JellyseerrRepository>() }
-    val jellyseerrAuthenticator = remember { koin.get<JellyseerrAuthenticator>() }
+    val jellyseerrSsoAuthenticator = remember { koin.get<JellyseerrSsoAuthenticator>() }
     val jellyseerrEnvironmentProvider = remember { koin.get<JellyseerrEnvironmentProvider>() }
     val jellyseerrCoordinator =
         remember(jellyseerrRepository, jellyseerrEnvironmentProvider, coroutineScope) {
@@ -749,17 +755,11 @@ fun JellystackRoot(
                     JellystackLog.d("Attempting Jellyseerr auto-auth at $normalizedUrl using ${linkedCredential.username}")
                     try {
                         val authResult =
-                            jellyseerrAuthenticator.authenticate(
-                                JellyseerrAuthRequest(
-                                    baseUrl = normalizedUrl,
-                                    username = linkedCredential.username,
-                                    password = form.password,
-                                    hostname = components.hostname,
-                                    port = components.port,
-                                    urlBase = components.urlBase.takeIf { it.isNotEmpty() },
-                                    useSsl = components.useSsl,
-                                    serverType = 2,
-                                ),
+                            jellyseerrSsoAuthenticator.authenticateWithLinkedJellyfin(
+                                jellyseerrUrl = normalizedUrl,
+                                jellyfinServerId = linkedServer.id,
+                                components = components,
+                                passwordOverride = form.password.takeIf { it.isNotBlank() },
                             )
                         serverRepository.register(
                             ServerRegistration(
@@ -778,7 +778,16 @@ fun JellystackRoot(
                         jellyseerrCoordinator.refresh()
                         JellystackLog.d("Jellyseerr server connected: $normalizedUrl")
                     } catch (authError: JellyseerrAuthenticationException) {
-                        serverErrorMessage = authError.message ?: "Unable to authenticate with Jellyseerr."
+                        if (authError.reason == Reason.MISSING_JELLYFIN_PASSWORD) {
+                            serverFormState =
+                                serverFormState.copy(
+                                    requiresJellyseerrPassword = true,
+                                    password = "",
+                                )
+                            serverErrorMessage = "Enter your Jellyfin password to finish connecting."
+                        } else {
+                            serverErrorMessage = authError.message ?: "Unable to authenticate with Jellyseerr."
+                        }
                         JellystackLog.e("Jellyseerr authentication failed for $normalizedUrl: $serverErrorMessage", authError)
                     } catch (t: Throwable) {
                         serverErrorMessage = t.connectivityErrorMessage()
@@ -1692,7 +1701,7 @@ private fun AddServerDialog(
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
-    var passwordVisible by remember { mutableStateOf(false) }
+    var passwordVisible by remember(state.requiresJellyseerrPassword) { mutableStateOf(false) }
     var serverMenuExpanded by remember { mutableStateOf(false) }
     val jellyfinServers = availableJellyfinServers.filter { it.type == ServerType.JELLYFIN }
     val selectedJellyfinServer = jellyfinServers.firstOrNull { it.id == state.jellyfinServerId }
@@ -1713,6 +1722,7 @@ private fun AddServerDialog(
                                         type = ServerFormType.JELLYFIN,
                                         jellyfinServerId = null,
                                         password = "",
+                                        requiresJellyseerrPassword = false,
                                     ),
                                 )
                                 onClearError()
@@ -1735,6 +1745,7 @@ private fun AddServerDialog(
                                         username = credential?.username ?: state.username,
                                         name = if (state.name.isBlank()) "${default.name} Requests" else state.name,
                                         password = "",
+                                        requiresJellyseerrPassword = false,
                                     ),
                                 )
                                 onClearError()
@@ -1778,6 +1789,29 @@ private fun AddServerDialog(
                             singleLine = true,
                             enabled = !isSaving,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        )
+                        OutlinedTextField(
+                            value = state.password,
+                            onValueChange = {
+                                onValueChange(state.copy(password = it))
+                                onClearError()
+                            },
+                            label = { Text("Password") },
+                            singleLine = true,
+                            enabled = !isSaving,
+                            visualTransformation =
+                                if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            keyboardOptions =
+                                KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
+                            trailingIcon = {
+                                val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                    )
+                                }
+                            },
                         )
                     }
                     ServerFormType.JELLYSEERR -> {
@@ -1826,6 +1860,7 @@ private fun AddServerDialog(
                                                         jellyfinServerId = server.id,
                                                         username = credential?.username ?: state.username,
                                                         password = "",
+                                                        requiresJellyseerrPassword = false,
                                                     ),
                                                 )
                                                 onClearError()
@@ -1841,33 +1876,39 @@ private fun AddServerDialog(
                                 singleLine = true,
                                 enabled = false,
                             )
+                            if (state.requiresJellyseerrPassword) {
+                                OutlinedTextField(
+                                    value = state.password,
+                                    onValueChange = {
+                                        onValueChange(state.copy(password = it))
+                                        onClearError()
+                                    },
+                                    label = { Text("Jellyfin password") },
+                                    singleLine = true,
+                                    enabled = !isSaving,
+                                    visualTransformation =
+                                        if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    keyboardOptions =
+                                        KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
+                                    trailingIcon = {
+                                        val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
+                                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                            )
+                                        }
+                                    },
+                                )
+                                Text(
+                                    text = "Enter your Jellyfin password so we can save it securely for future requests.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
-                val passwordLabel =
-                    if (state.type == ServerFormType.JELLYFIN) {
-                        "Password"
-                    } else {
-                        "Jellyfin password"
-                    }
-                OutlinedTextField(
-                    value = state.password,
-                    onValueChange = {
-                        onValueChange(state.copy(password = it))
-                        onClearError()
-                    },
-                    label = { Text(passwordLabel) },
-                    singleLine = true,
-                    enabled = !isSaving && (state.type == ServerFormType.JELLYFIN || jellyfinServers.isNotEmpty()),
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(imageVector = icon, contentDescription = if (passwordVisible) "Hide password" else "Show password")
-                        }
-                    },
-                )
                 if (state.type == ServerFormType.JELLYSEERR && jellyfinServers.isNotEmpty()) {
                     Text(
                         text = "We'll sign in to Jellyseerr with your Jellyfin account to obtain the API key automatically.",
@@ -2048,13 +2089,6 @@ private fun sanitizeFileSegment(value: String): String {
     val trimmed = sanitized.trim('_')
     return if (trimmed.isBlank()) "file" else trimmed
 }
-
-private data class JellyfinServerComponents(
-    val hostname: String,
-    val port: Int,
-    val urlBase: String,
-    val useSsl: Boolean,
-)
 
 private data class ParsedServerUrl(
     val scheme: String,

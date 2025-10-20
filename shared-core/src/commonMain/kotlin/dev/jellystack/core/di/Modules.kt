@@ -9,6 +9,7 @@ import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
+import dev.jellystack.core.jellyseerr.JellyseerrSsoAuthenticator
 import dev.jellystack.core.jellyseerr.ServerRepositoryJellyseerrEnvironmentProvider
 import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.security.SecureStore
@@ -51,6 +52,7 @@ fun coreModule(): Module =
         single { JellyfinBrowseRepository(get(), get(), get(), get(), get()) }
         single { JellyseerrRepository() }
         single { JellyseerrAuthenticator() }
+        single { JellyseerrSsoAuthenticator(get(), get(), get()) }
         single { ThemePreferenceRepository(get()) }
     }
 
