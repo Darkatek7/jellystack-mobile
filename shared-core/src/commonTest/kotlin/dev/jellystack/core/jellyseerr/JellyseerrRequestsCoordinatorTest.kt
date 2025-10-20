@@ -14,13 +14,13 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 
 class JellyseerrRequestsCoordinatorTest {
     private val environment =
@@ -43,14 +43,12 @@ class JellyseerrRequestsCoordinatorTest {
                     environmentProvider = provider,
                     scope = this,
                     pollIntervalMillis = 60_000,
+                    enablePolling = false,
                     clock = FixedClock,
                 )
 
             provider.update(environment)
-            advanceUntilIdle()
-
-            val state = coordinator.state.value
-            val ready = assertIs<JellyseerrRequestsState.Ready>(state)
+            val ready = coordinator.state.filterIsInstance<JellyseerrRequestsState.Ready>().first()
             assertEquals(1, ready.requests.size)
             assertEquals(
                 "Admin",
@@ -59,6 +57,8 @@ class JellyseerrRequestsCoordinatorTest {
                     .requestedBy
                     ?.displayName,
             )
+
+            coordinator.shutdown()
         }
 
     private fun mockClient(): HttpClient =

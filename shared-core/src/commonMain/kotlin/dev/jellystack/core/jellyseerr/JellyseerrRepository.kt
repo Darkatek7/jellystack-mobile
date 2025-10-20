@@ -5,6 +5,7 @@ import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.NetworkJson
 import dev.jellystack.network.jellyseerr.JellyseerrApi
 import dev.jellystack.network.jellyseerr.JellyseerrCreateRequestPayload
+import dev.jellystack.network.jellyseerr.JellyseerrHttpException
 import dev.jellystack.network.jellyseerr.JellyseerrMediaInfoDto
 import dev.jellystack.network.jellyseerr.JellyseerrProfileDto
 import dev.jellystack.network.jellyseerr.JellyseerrRequestCountsDto
@@ -90,6 +91,13 @@ class JellyseerrRepository(
         return try {
             val response = api(environment).createRequest(payload)
             JellyseerrCreateResult.Success(response.toDomain())
+        } catch (error: JellyseerrHttpException) {
+            val message = parseErrorMessage(error.responseBody)
+            if (error.status == HttpStatusCode.Conflict) {
+                JellyseerrCreateResult.Duplicate(message ?: "This item has already been requested.")
+            } else {
+                JellyseerrCreateResult.Failure(message ?: "Request failed.", error)
+            }
         } catch (error: ClientRequestException) {
             val message = extractErrorMessage(error)
             if (error.response.status == HttpStatusCode.Conflict) {

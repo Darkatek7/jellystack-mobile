@@ -18,12 +18,14 @@ class JellyseerrRequestsCoordinator(
     private val environmentProvider: JellyseerrEnvironmentProvider,
     private val scope: CoroutineScope,
     private val pollIntervalMillis: Long = DEFAULT_POLL_INTERVAL_MILLIS,
+    private val enablePolling: Boolean = true,
     private val clock: Clock = Clock.System,
 ) {
     private val mutex = Mutex()
     private val _state = MutableStateFlow<JellyseerrRequestsState>(JellyseerrRequestsState.Loading)
     val state: StateFlow<JellyseerrRequestsState> = _state
 
+    private val environmentJob: Job
     private var currentEnvironment: JellyseerrEnvironment? = null
     private var currentProfile: JellyseerrProfile? = null
     private var currentFilter: JellyseerrRequestFilter = JellyseerrRequestFilter.ALL
@@ -35,17 +37,23 @@ class JellyseerrRequestsCoordinator(
     private var lastUpdated: Instant? = null
 
     init {
-        scope.launch {
-            environmentProvider.observe().collect { environment ->
-                handleEnvironmentChange(environment)
+        environmentJob =
+            scope.launch {
+                environmentProvider.observe().collect { environment ->
+                    handleEnvironmentChange(environment)
+                }
             }
-        }
     }
 
     fun refresh() {
         scope.launch {
             refreshInternal(fetchCounts = true)
         }
+    }
+
+    fun shutdown() {
+        pollJob?.cancel()
+        environmentJob.cancel()
     }
 
     fun selectFilter(filter: JellyseerrRequestFilter) {
@@ -311,6 +319,7 @@ class JellyseerrRequestsCoordinator(
         if (environment == null) {
             return
         }
+        println("handleEnvironmentChange called for ${environment.serverId}")
         val loadResult =
             runCatching {
                 val profile = repository.profile(environment)
@@ -320,6 +329,7 @@ class JellyseerrRequestsCoordinator(
             }
         loadResult
             .onSuccess { (profile, page, counts) ->
+                println("handleEnvironmentChange success: requests=${page.results.size}")
                 mutex.withLock {
                     currentProfile = profile
                     lastRequests = page.results
@@ -342,6 +352,7 @@ class JellyseerrRequestsCoordinator(
                 }
                 startPolling()
             }.onFailure { error ->
+                println("handleEnvironmentChange failure: ${error.message}")
                 mutex.withLock {
                     _state.value =
                         JellyseerrRequestsState.Error(error.message ?: "Failed to load Jellyseerr data.")
@@ -350,6 +361,9 @@ class JellyseerrRequestsCoordinator(
     }
 
     private fun startPolling() {
+        if (!enablePolling) {
+            return
+        }
         pollJob?.cancel()
         pollJob =
             scope.launch {

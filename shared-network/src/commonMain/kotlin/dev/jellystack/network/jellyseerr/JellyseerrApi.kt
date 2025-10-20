@@ -10,7 +10,10 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.SerialName
@@ -102,7 +105,7 @@ class JellyseerrApi internal constructor(
                 applyAuthHeaders()
                 contentType(ContentType.Application.Json)
                 setBody(payload)
-            }.body()
+            }.toBodyOrThrow()
 
     suspend fun loginWithJellyfin(payload: JellyseerrJellyfinLoginPayload): JellyseerrUserDto =
         client
@@ -171,7 +174,28 @@ class JellyseerrApi internal constructor(
         header(HEADER_API_KEY, apiKey)
         apiUserId?.let { header(HEADER_API_USER, it) }
     }
+
+    private suspend inline fun <reified T> HttpResponse.toBodyOrThrow(): T {
+        if (!status.isSuccess()) {
+            val responseText = runCatching { bodyAsText() }.getOrNull()
+            throw JellyseerrHttpException(status, responseText)
+        }
+        return body()
+    }
 }
+
+class JellyseerrHttpException(
+    val status: HttpStatusCode,
+    val responseBody: String?,
+) : Exception(
+        buildString {
+            append("HTTP ${status.value} ${status.description}")
+            if (!responseBody.isNullOrBlank()) {
+                append(": ")
+                append(responseBody)
+            }
+        },
+    )
 
 @Serializable
 data class JellyseerrSearchResponseDto(
