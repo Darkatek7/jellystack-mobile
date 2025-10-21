@@ -15,6 +15,7 @@ import dev.jellystack.network.jellyseerr.JellyseerrSearchResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResultDto
 import dev.jellystack.network.jellyseerr.JellyseerrSeasonDto
 import dev.jellystack.network.jellyseerr.JellyseerrUserDto
+import dev.jellystack.network.jellyseerr.JellyseerrSessionCookieHandler
 import dev.jellystack.network.jellyseerr.seasonsAll
 import dev.jellystack.network.jellyseerr.seasonsList
 import io.ktor.client.HttpClient
@@ -30,29 +31,44 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class JellyseerrRepository(
+    private val sessionAuthenticator: JellyseerrSessionAuthenticator? = null,
     httpClient: HttpClient? = null,
     private val json: Json = NetworkJson.default,
 ) {
     private val client: HttpClient =
         httpClient ?: NetworkClientFactory.create(ClientConfig(installLogging = false))
-    private val apiCache = mutableMapOf<String, JellyseerrApi>()
+    private data class CachedApi(
+        val api: JellyseerrApi,
+        val handler: JellyseerrSessionCookieHandler?,
+    )
+
+    private val apiCache = mutableMapOf<String, CachedApi>()
     private val credentialCache = mutableMapOf<String, Pair<String?, String?>>()
 
-    fun api(environment: JellyseerrEnvironment): JellyseerrApi =
-        apiCache[environment.serverId]?.takeIf {
+    private suspend fun api(environment: JellyseerrEnvironment): JellyseerrApi {
+        val handler = sessionAuthenticator?.sessionHandler(environment)
+        val cacheEntry = apiCache[environment.serverId]
+        if (
+            cacheEntry != null &&
+            cacheEntry.handler === handler &&
             credentialCache[environment.serverId] == environment.apiKey to environment.sessionCookie
+        ) {
+            return cacheEntry.api
         }
-            ?: JellyseerrApi
+        val api =
+            JellyseerrApi
                 .create(
                     baseUrl = environment.baseUrl,
                     apiKey = environment.apiKey,
                     sessionCookie = environment.sessionCookie,
                     apiUserId = environment.apiUserId,
+                    sessionHandler = handler,
                     client = client,
-                ).also { api ->
-                    apiCache[environment.serverId] = api
-                    credentialCache[environment.serverId] = environment.apiKey to environment.sessionCookie
-                }
+                )
+        apiCache[environment.serverId] = CachedApi(api, handler)
+        credentialCache[environment.serverId] = environment.apiKey to environment.sessionCookie
+        return api
+    }
 
     suspend fun fetchRequests(
         environment: JellyseerrEnvironment,
@@ -123,38 +139,39 @@ class JellyseerrRepository(
     suspend fun deleteRequest(
         environment: JellyseerrEnvironment,
         requestId: Int,
-    ): Result<Unit> =
-        runCatching {
-            api(environment).deleteRequest(requestId)
-        }
+    ): Result<Unit> {
+        val apiInstance = api(environment)
+        return runCatching { apiInstance.deleteRequest(requestId) }
+    }
 
     suspend fun removeMediaFromService(
         environment: JellyseerrEnvironment,
         mediaId: Int,
         is4k: Boolean = false,
-    ): Result<Unit> =
-        runCatching {
-            val api = api(environment)
-            api.deleteMediaFiles(mediaId, is4k)
-            api.deleteMedia(mediaId)
+    ): Result<Unit> {
+        val apiInstance = api(environment)
+        return runCatching {
+            apiInstance.deleteMediaFiles(mediaId, is4k)
+            apiInstance.deleteMedia(mediaId)
         }
+    }
 
     suspend fun retryRequest(
         environment: JellyseerrEnvironment,
         requestId: Int,
-    ): Result<JellyseerrRequestSummary> =
-        runCatching {
-            api(environment).retryRequest(requestId).toDomain()
-        }
+    ): Result<JellyseerrRequestSummary> {
+        val apiInstance = api(environment)
+        return runCatching { apiInstance.retryRequest(requestId).toDomain() }
+    }
 
     suspend fun updateRequestStatus(
         environment: JellyseerrEnvironment,
         requestId: Int,
         status: String,
-    ): Result<JellyseerrRequestSummary> =
-        runCatching {
-            api(environment).updateRequestStatus(requestId, status).toDomain()
-        }
+    ): Result<JellyseerrRequestSummary> {
+        val apiInstance = api(environment)
+        return runCatching { apiInstance.updateRequestStatus(requestId, status).toDomain() }
+    }
 
     suspend fun profile(environment: JellyseerrEnvironment): JellyseerrProfile = api(environment).getProfile().toDomain()
 

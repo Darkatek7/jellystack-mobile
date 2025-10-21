@@ -36,7 +36,7 @@ class JellyseerrRequestsCoordinatorTest {
     fun emitsReadyStateWhenServerPresent() =
         runTest {
             val client = mockClient()
-            val repository = JellyseerrRepository(client)
+            val repository = JellyseerrRepository(httpClient = client)
             val provider = FakeEnvironmentProvider()
             val coordinator =
                 JellyseerrRequestsCoordinator(

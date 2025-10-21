@@ -93,6 +93,8 @@ import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
+import dev.jellystack.core.jellyseerr.JellyseerrSessionAuthenticator
+import dev.jellystack.core.jellyseerr.JellyseerrSessionMetadata
 import dev.jellystack.core.jellyseerr.JellyseerrSsoAuthenticator
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.ThemePreferenceRepository
@@ -269,6 +271,7 @@ fun JellystackRoot(
     val browseRepository = remember { koin.get<JellyfinBrowseRepository>() }
     val jellyseerrRepository = remember { koin.get<JellyseerrRepository>() }
     val jellyseerrSsoAuthenticator = remember { koin.get<JellyseerrSsoAuthenticator>() }
+    val jellyseerrSessionAuthenticator = remember { koin.get<JellyseerrSessionAuthenticator>() }
     val jellyseerrEnvironmentProvider = remember { koin.get<JellyseerrEnvironmentProvider>() }
     val jellyseerrCoordinator =
         remember(jellyseerrRepository, jellyseerrEnvironmentProvider, coroutineScope) {
@@ -761,18 +764,27 @@ fun JellystackRoot(
                                 components = components,
                                 passwordOverride = form.password.takeIf { it.isNotBlank() },
                             )
-                        serverRepository.register(
-                            ServerRegistration(
-                                type = ServerType.JELLYSEERR,
-                                name = form.name.ifBlank { "${linkedServer.name} Requests" },
-                                baseUrl = normalizedUrl,
-                                credentials =
+                        val registered =
+                            serverRepository.register(
+                                ServerRegistration(
+                                    type = ServerType.JELLYSEERR,
+                                    name = form.name.ifBlank { "${linkedServer.name} Requests" },
+                                    baseUrl = normalizedUrl,
+                                    credentials =
                                     CredentialInput.ApiKey(
                                         apiKey = authResult.apiKey,
                                         userId = authResult.userId?.toString(),
                                         sessionCookie = authResult.sessionCookie,
-                                    ),
+                                ),
                             ),
+                        )
+                        jellyseerrSessionAuthenticator.rememberLink(
+                            jellyseerrServerId = registered.id,
+                            metadata =
+                                JellyseerrSessionMetadata(
+                                    jellyfinServerId = linkedServer.id,
+                                    components = components,
+                                ),
                         )
                         serverFormState = ServerFormState()
                         showAddServerDialog = false
@@ -807,6 +819,9 @@ fun JellystackRoot(
                 serverRepository.remove(server.id)
                 if (server.type == ServerType.JELLYFIN) {
                     browseCoordinator.bootstrap(forceRefresh = true)
+                }
+                if (server.type == ServerType.JELLYSEERR) {
+                    jellyseerrSessionAuthenticator.clearLink(server.id)
                 }
                 serverErrorMessage = null
             } catch (t: Throwable) {

@@ -47,7 +47,7 @@ class JellyseerrRepositoryTest {
                         json(NetworkJson.default)
                     }
                 }
-            val repository = JellyseerrRepository(client)
+            val repository = JellyseerrRepository(httpClient = client)
 
             val result =
                 repository.createRequest(
@@ -115,7 +115,7 @@ class JellyseerrRepositoryTest {
                         json(NetworkJson.default)
                     }
                 }
-            val repository = JellyseerrRepository(client)
+            val repository = JellyseerrRepository(httpClient = client)
 
             val page = repository.fetchRequests(environment, JellyseerrRequestFilter.ALL)
 
