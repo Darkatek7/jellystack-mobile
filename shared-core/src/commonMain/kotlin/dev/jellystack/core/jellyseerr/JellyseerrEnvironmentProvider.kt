@@ -35,6 +35,7 @@ private fun ManagedServer.toEnvironment(): JellyseerrEnvironment? {
         serverName = name,
         baseUrl = baseUrl,
         apiKey = credential.apiKey,
+        sessionCookie = credential.sessionCookie,
         apiUserId = credential.userId?.toIntOrNull(),
     )
 }

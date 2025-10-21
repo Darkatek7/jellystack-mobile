@@ -11,6 +11,7 @@ data class ServerRecord(
     val deviceId: String?,
     val apiKey: String?,
     val accessToken: String?,
+    val sessionCookie: String?,
     val userId: String?,
     val createdAt: Instant,
     val updatedAt: Instant,

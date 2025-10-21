@@ -6,7 +6,8 @@ data class JellyseerrEnvironment(
     val serverId: String,
     val serverName: String,
     val baseUrl: String,
-    val apiKey: String,
+    val apiKey: String?,
+    val sessionCookie: String?,
     val apiUserId: Int? = null,
 )
 

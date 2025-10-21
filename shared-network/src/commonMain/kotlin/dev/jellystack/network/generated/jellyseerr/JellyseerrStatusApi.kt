@@ -5,6 +5,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.header
 import io.ktor.client.request.request
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.path
 import io.ktor.http.takeFrom
@@ -22,6 +23,7 @@ class JellyseerrStatusApi(
     private val client: HttpClient,
     private val baseUrl: String,
     private val apiKey: String?,
+    private val sessionCookie: String?,
 ) {
     private fun io.ktor.client.request.HttpRequestBuilder.configureUrl(pathSuffix: String) {
         url {
@@ -33,6 +35,9 @@ class JellyseerrStatusApi(
     private fun io.ktor.client.request.HttpRequestBuilder.applyAuth() {
         if (!apiKey.isNullOrBlank()) {
             header("X-Api-Key", apiKey)
+        }
+        if (!sessionCookie.isNullOrBlank()) {
+            header(HttpHeaders.Cookie, sessionCookie)
         }
     }
 

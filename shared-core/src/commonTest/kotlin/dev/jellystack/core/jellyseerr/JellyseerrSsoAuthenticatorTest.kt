@@ -20,8 +20,7 @@ import kotlin.test.assertFailsWith
 
 class JellyseerrSsoAuthenticatorTest {
     @Test
-    fun authenticatesUsingStoredJellyfinPassword() =
-        runTest {
+    fun authenticatesUsingStoredJellyfinPassword() = runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -52,13 +51,13 @@ class JellyseerrSsoAuthenticatorTest {
                 )
 
             assertEquals("test-key", result.apiKey)
+            assertEquals(null, result.sessionCookie)
             assertEquals("pw", authenticator.lastRequest?.password)
             assertEquals("media.local", authenticator.lastRequest?.hostname)
         }
 
     @Test
-    fun throwsWhenLinkedServerMissing() =
-        runTest {
+    fun throwsWhenLinkedServerMissing() = runTest {
             val vault = ServerCredentialVault(FakeSecureStore())
             val repository = repository(jellyfinCredential(), vault)
             val authenticator = FakeJellyseerrAuthenticator()
@@ -83,8 +82,7 @@ class JellyseerrSsoAuthenticatorTest {
         }
 
     @Test
-    fun throwsWhenPasswordNotStored() =
-        runTest {
+    fun throwsWhenPasswordNotStored() = runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -121,8 +119,7 @@ class JellyseerrSsoAuthenticatorTest {
         }
 
     @Test
-    fun usesManualPasswordWhenProvided() =
-        runTest {
+    fun usesManualPasswordWhenProvided() = runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -159,6 +156,49 @@ class JellyseerrSsoAuthenticatorTest {
             assertEquals("manual", vault.readJellyfinPassword(server.id)?.reveal())
         }
 
+    @Test
+    fun capturesSessionCookieWhenApiKeyMissing() = runTest {
+            val storedCredential = jellyfinCredential()
+            val secureStore = FakeSecureStore()
+            val vault = ServerCredentialVault(secureStore)
+            val repository = repository(storedCredential, vault)
+            val server =
+                repository.register(
+                    ServerRegistration(
+                        type = ServerType.JELLYFIN,
+                        name = "Media",
+                        baseUrl = "https://media.local",
+                        credentials = CredentialInput.Jellyfin(username = "demo", password = "pw"),
+                    ),
+                )
+            val authenticator =
+                FakeJellyseerrAuthenticator().apply {
+                    nextResult =
+                        JellyseerrAuthenticationResult(
+                            apiKey = null,
+                            userId = 9,
+                            sessionCookie = "connect.sid=abc",
+                        )
+                }
+            val coordinator = JellyseerrSsoAuthenticator(repository, authenticator, vault)
+
+            val result =
+                coordinator.authenticateWithLinkedJellyfin(
+                    jellyseerrUrl = "https://requests.local",
+                    jellyfinServerId = server.id,
+                    components =
+                        JellyfinServerComponents(
+                            hostname = "media.local",
+                            port = 443,
+                            urlBase = "",
+                            useSsl = true,
+                        ),
+                )
+
+            assertEquals(null, result.apiKey)
+            assertEquals("connect.sid=abc", result.sessionCookie)
+        }
+
     private fun repository(
         storedCredential: StoredCredential.Jellyfin,
         credentialVault: ServerCredentialVault,
@@ -167,7 +207,7 @@ class JellyseerrSsoAuthenticatorTest {
             dev.jellystack.core.server.ServerConnectivity { registration ->
                 when (registration.type) {
                     ServerType.JELLYFIN -> ConnectivityResult.Success("ok", storedCredential)
-                    else -> ConnectivityResult.Success("ok", StoredCredential.ApiKey("api"))
+                    else -> ConnectivityResult.Success("ok", StoredCredential.ApiKey(apiKey = "api"))
                 }
             }
         return ServerRepository(
@@ -188,10 +228,12 @@ class JellyseerrSsoAuthenticatorTest {
 
     private class FakeJellyseerrAuthenticator : JellyseerrAuthenticator() {
         var lastRequest: JellyseerrAuthRequest? = null
+        var nextResult: JellyseerrAuthenticationResult =
+            JellyseerrAuthenticationResult(apiKey = "test-key", userId = 7, sessionCookie = null)
 
         override suspend fun authenticate(request: JellyseerrAuthRequest): JellyseerrAuthenticationResult {
             lastRequest = request
-            return JellyseerrAuthenticationResult(apiKey = "test-key", userId = 7)
+            return nextResult
         }
     }
 

@@ -13,6 +13,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -34,13 +35,15 @@ private const val HEADER_API_USER = "X-API-User"
 class JellyseerrApi internal constructor(
     private val client: HttpClient,
     private val apiBaseUrl: String,
-    private val apiKey: String,
+    private val apiKey: String?,
+    private val sessionCookie: String?,
     private val apiUserId: Int? = null,
 ) {
     companion object {
         fun create(
             baseUrl: String,
-            apiKey: String,
+            apiKey: String?,
+            sessionCookie: String? = null,
             apiUserId: Int? = null,
             client: HttpClient? = null,
             clientConfig: ClientConfig.() -> Unit = {},
@@ -53,7 +56,7 @@ class JellyseerrApi internal constructor(
                             installLogging = false,
                         ).apply(clientConfig),
                     )
-            return JellyseerrApi(httpClient, normalizedBase + API_PREFIX, apiKey, apiUserId)
+            return JellyseerrApi(httpClient, normalizedBase + API_PREFIX, apiKey, sessionCookie, apiUserId)
         }
     }
 
@@ -171,8 +174,9 @@ class JellyseerrApi internal constructor(
             }.body()
 
     private fun io.ktor.client.request.HttpRequestBuilder.applyAuthHeaders() {
-        header(HEADER_API_KEY, apiKey)
+        apiKey?.let { header(HEADER_API_KEY, it) }
         apiUserId?.let { header(HEADER_API_USER, it) }
+        sessionCookie?.takeIf { it.isNotBlank() }?.let { header(HttpHeaders.Cookie, it) }
     }
 
     private suspend inline fun <reified T> HttpResponse.toBodyOrThrow(): T {
@@ -269,6 +273,7 @@ data class JellyseerrUserDto(
     @SerialName("displayName") val displayName: String? = null,
     @SerialName("username") val username: String? = null,
     @SerialName("jellyfinUsername") val jellyfinUsername: String? = null,
+    @SerialName("apiKey") val apiKey: String? = null,
     val permissions: Int? = null,
 )
 

@@ -7,6 +7,7 @@ CREATE TABLE servers (
     device_id TEXT,
     api_key TEXT,
     access_token TEXT,
+    session_cookie TEXT,
     user_id TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -37,11 +38,12 @@ INSERT OR REPLACE INTO servers (
     device_id,
     api_key,
     access_token,
+    session_cookie,
     user_id,
     created_at,
     updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteById:
 DELETE FROM servers

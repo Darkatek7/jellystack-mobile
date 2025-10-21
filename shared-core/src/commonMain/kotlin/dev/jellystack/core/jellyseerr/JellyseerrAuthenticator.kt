@@ -6,6 +6,7 @@ import dev.jellystack.network.jellyseerr.JellyseerrApi
 import dev.jellystack.network.jellyseerr.JellyseerrJellyfinLoginPayload
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.cookies.HttpCookies
+import io.ktor.client.plugins.cookies.cookies
 
 open class JellyseerrAuthenticator {
     open suspend fun authenticate(request: JellyseerrAuthRequest): JellyseerrAuthenticationResult {
@@ -30,7 +31,7 @@ open class JellyseerrAuthenticator {
         val api =
             JellyseerrApi.create(
                 baseUrl = request.baseUrl,
-                apiKey = "",
+                apiKey = null,
                 client = client,
             )
         val user =
@@ -46,13 +47,29 @@ open class JellyseerrAuthenticator {
                     email = request.email,
                 ),
             )
-        val settings = api.fetchMainSettings()
-        val apiKey =
-            settings.apiKey ?: throw JellyseerrAuthenticationException("Jellyseerr server did not return an API key.")
-        runCatching { api.logout() }
+        val cookies = client.cookies(request.baseUrl)
+        val cookieHeader =
+            cookies
+                .filter { it.name.isNotBlank() && it.value.isNotBlank() }
+                .joinToString(separator = "; ") { cookie -> "${cookie.name}=${cookie.value}" }
+                .takeIf { it.isNotBlank() }
+        val userApiKey = user.apiKey?.takeIf { it.isNotBlank() }
+        val settingsApiKey =
+            runCatching { api.fetchMainSettings().apiKey }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+        val resolvedApiKey = userApiKey ?: settingsApiKey
+        val resolvedCookie = cookieHeader.takeIf { resolvedApiKey.isNullOrBlank() }
+        if (resolvedApiKey.isNullOrBlank() && resolvedCookie == null) {
+            throw JellyseerrAuthenticationException("Jellyseerr server did not return an API key.")
+        }
+        if (resolvedCookie == null) {
+            runCatching { api.logout() }
+        }
         return JellyseerrAuthenticationResult(
-            apiKey = apiKey,
+            apiKey = resolvedApiKey,
             userId = user.id,
+            sessionCookie = resolvedCookie,
         )
     }
 }
@@ -70,8 +87,9 @@ data class JellyseerrAuthRequest(
 )
 
 data class JellyseerrAuthenticationResult(
-    val apiKey: String,
+    val apiKey: String?,
     val userId: Int?,
+    val sessionCookie: String?,
 )
 
 class JellyseerrAuthenticationException(

@@ -160,7 +160,7 @@ class ServerRepositoryTest {
                 repository { registration ->
                     when (registration.type) {
                         ServerType.JELLYFIN -> ConnectivityResult.Success("ok", storedCredential)
-                        else -> ConnectivityResult.Success("ok", StoredCredential.ApiKey("abc"))
+                        else -> ConnectivityResult.Success("ok", StoredCredential.ApiKey(apiKey = "abc"))
                     }
                 }
 
@@ -196,7 +196,7 @@ class ServerRepositoryTest {
         return ServerRepository(store, connectivity, ServerCredentialVault(secureStore), clock = FixedClock)
     }
 
-    private fun successApiKey(): ConnectivityResult = ConnectivityResult.Success("ok", StoredCredential.ApiKey("abc"))
+    private fun successApiKey(): ConnectivityResult = ConnectivityResult.Success("ok", StoredCredential.ApiKey(apiKey = "abc"))
 }
 
 private object FixedClock : kotlinx.datetime.Clock {

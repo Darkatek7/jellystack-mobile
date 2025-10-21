@@ -8,8 +8,9 @@ sealed interface CredentialInput {
     ) : CredentialInput
 
     data class ApiKey(
-        val apiKey: String,
+        val apiKey: String?,
         val userId: String? = null,
+        val sessionCookie: String? = null,
     ) : CredentialInput
 }
 
@@ -22,7 +23,8 @@ sealed interface StoredCredential {
     ) : StoredCredential
 
     data class ApiKey(
-        val apiKey: String,
+        val apiKey: String?,
         val userId: String? = null,
+        val sessionCookie: String? = null,
     ) : StoredCredential
 }

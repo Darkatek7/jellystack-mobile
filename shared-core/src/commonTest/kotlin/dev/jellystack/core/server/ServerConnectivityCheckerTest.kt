@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -80,7 +81,7 @@ class ServerConnectivityCheckerTest {
                         type = ServerType.SONARR,
                         name = "Shows",
                         baseUrl = "https://sonarr.local",
-                        credentials = CredentialInput.ApiKey("abc"),
+                        credentials = CredentialInput.ApiKey(apiKey = "abc"),
                     ),
                 )
 
@@ -98,11 +99,39 @@ class ServerConnectivityCheckerTest {
                         type = ServerType.JELLYSEERR,
                         name = "Requests",
                         baseUrl = "https://requests.local",
-                        credentials = CredentialInput.ApiKey("key"),
+                        credentials = CredentialInput.ApiKey(apiKey = "key"),
                     ),
                 )
 
             assertIs<ConnectivityResult.Failure>(result)
+        }
+
+    @Test
+    fun jellyseerrAcceptsSessionCookieFallback() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    assertTrue(request.headers[HttpHeaders.Cookie] == "connect.sid=session")
+                    respond(
+                        content = """{"version":"2.0"}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            val checker = checkerWithEngine(engine)
+
+            val result =
+                checker.test(
+                    ServerRegistration(
+                        type = ServerType.JELLYSEERR,
+                        name = "Requests",
+                        baseUrl = "https://requests.local",
+                        credentials = CredentialInput.ApiKey(apiKey = null, sessionCookie = "connect.sid=session"),
+                    ),
+                )
+
+            val credential = assertIs<StoredCredential.ApiKey>((result as ConnectivityResult.Success).credentials)
+            assertEquals(null, credential.apiKey)
+            assertEquals("connect.sid=session", credential.sessionCookie)
         }
 
     private fun checkerWithEngine(engine: MockEngine): ServerConnectivityChecker =

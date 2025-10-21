@@ -24,6 +24,7 @@ class JellyseerrRepositoryTest {
             serverName = "Requests",
             baseUrl = "https://requests.test",
             apiKey = "secret",
+            sessionCookie = null,
         )
 
     @Test

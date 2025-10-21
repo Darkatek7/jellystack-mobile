@@ -84,13 +84,17 @@ class ServerConnectivityChecker(
         val creds =
             registration.credentials as? CredentialInput.ApiKey
                 ?: return ConnectivityResult.Failure("Sonarr API key is required")
+        val apiKey = creds.apiKey
+        if (apiKey.isNullOrBlank()) {
+            return ConnectivityResult.Failure("Sonarr API key is required")
+        }
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
-            val api = SonarrSystemApi(client, registration.baseUrl, creds.apiKey)
+            val api = SonarrSystemApi(client, registration.baseUrl, apiKey)
             val status = api.fetchSystemStatus()
             ConnectivityResult.Success(
                 message = "Connected to ${status.appName} ${status.version}",
-                credentials = StoredCredential.ApiKey(creds.apiKey),
+                credentials = StoredCredential.ApiKey(apiKey),
             )
         } catch (t: Throwable) {
             JellystackLog.e("Sonarr connectivity failed for ${registration.baseUrl}: ${t.message}", t)
@@ -104,13 +108,17 @@ class ServerConnectivityChecker(
         val creds =
             registration.credentials as? CredentialInput.ApiKey
                 ?: return ConnectivityResult.Failure("Radarr API key is required")
+        val apiKey = creds.apiKey
+        if (apiKey.isNullOrBlank()) {
+            return ConnectivityResult.Failure("Radarr API key is required")
+        }
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
-            val api = RadarrSystemApi(client, registration.baseUrl, creds.apiKey)
+            val api = RadarrSystemApi(client, registration.baseUrl, apiKey)
             val status = api.fetchSystemStatus()
             ConnectivityResult.Success(
                 message = "Connected to ${status.appName} ${status.version}",
-                credentials = StoredCredential.ApiKey(creds.apiKey),
+                credentials = StoredCredential.ApiKey(apiKey),
             )
         } catch (t: Throwable) {
             JellystackLog.e("Radarr connectivity failed for ${registration.baseUrl}: ${t.message}", t)
@@ -124,13 +132,18 @@ class ServerConnectivityChecker(
         val creds =
             registration.credentials as? CredentialInput.ApiKey
                 ?: return ConnectivityResult.Failure("Jellyseerr API key is required")
+        val hasApiKey = !creds.apiKey.isNullOrBlank()
+        val hasCookie = !creds.sessionCookie.isNullOrBlank()
+        if (!hasApiKey && !hasCookie) {
+            return ConnectivityResult.Failure("Jellyseerr credentials are required")
+        }
         val client = clientFactory(ClientConfig(installLogging = false))
         return try {
-            val api = JellyseerrStatusApi(client, registration.baseUrl, creds.apiKey)
+            val api = JellyseerrStatusApi(client, registration.baseUrl, creds.apiKey, creds.sessionCookie)
             val status = api.fetchStatus()
             ConnectivityResult.Success(
                 message = "Connected to Jellyseerr ${status.version}",
-                credentials = StoredCredential.ApiKey(creds.apiKey),
+                credentials = StoredCredential.ApiKey(creds.apiKey, sessionCookie = creds.sessionCookie),
             )
         } catch (t: Throwable) {
             JellystackLog.e("Jellyseerr connectivity failed for ${registration.baseUrl}: ${t.message}", t)

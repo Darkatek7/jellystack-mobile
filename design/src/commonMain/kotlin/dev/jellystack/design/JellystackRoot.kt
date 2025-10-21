@@ -770,6 +770,7 @@ fun JellystackRoot(
                                     CredentialInput.ApiKey(
                                         apiKey = authResult.apiKey,
                                         userId = authResult.userId?.toString(),
+                                        sessionCookie = authResult.sessionCookie,
                                     ),
                             ),
                         )

@@ -36,16 +36,23 @@ class JellyseerrRepository(
     private val client: HttpClient =
         httpClient ?: NetworkClientFactory.create(ClientConfig(installLogging = false))
     private val apiCache = mutableMapOf<String, JellyseerrApi>()
+    private val credentialCache = mutableMapOf<String, Pair<String?, String?>>()
 
     fun api(environment: JellyseerrEnvironment): JellyseerrApi =
-        apiCache.getOrPut(environment.serverId) {
-            JellyseerrApi.create(
-                baseUrl = environment.baseUrl,
-                apiKey = environment.apiKey,
-                apiUserId = environment.apiUserId,
-                client = client,
-            )
+        apiCache[environment.serverId]?.takeIf {
+            credentialCache[environment.serverId] == environment.apiKey to environment.sessionCookie
         }
+            ?: JellyseerrApi
+                .create(
+                    baseUrl = environment.baseUrl,
+                    apiKey = environment.apiKey,
+                    sessionCookie = environment.sessionCookie,
+                    apiUserId = environment.apiUserId,
+                    client = client,
+                ).also { api ->
+                    apiCache[environment.serverId] = api
+                    credentialCache[environment.serverId] = environment.apiKey to environment.sessionCookie
+                }
 
     suspend fun fetchRequests(
         environment: JellyseerrEnvironment,

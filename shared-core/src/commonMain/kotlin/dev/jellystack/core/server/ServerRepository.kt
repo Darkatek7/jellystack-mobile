@@ -137,10 +137,13 @@ class ServerRepository(
                     throw InvalidServerConfiguration("Jellyfin password cannot be blank")
                 }
             }
-            is CredentialInput.ApiKey ->
-                if (creds.apiKey.isBlank()) {
-                    throw InvalidServerConfiguration("API key cannot be blank")
+            is CredentialInput.ApiKey -> {
+                val hasApiKey = !creds.apiKey.isNullOrBlank()
+                val hasSession = !creds.sessionCookie.isNullOrBlank()
+                if (!hasApiKey && !hasSession) {
+                    throw InvalidServerConfiguration("API key or session cookie is required")
                 }
+            }
         }
     }
 
@@ -162,6 +165,7 @@ class ServerRepository(
                     deviceId = credential.deviceId,
                     apiKey = null,
                     accessToken = credential.accessToken,
+                    sessionCookie = null,
                     userId = credential.userId,
                     createdAt = createdAt,
                     updatedAt = updatedAt,
@@ -176,6 +180,7 @@ class ServerRepository(
                     deviceId = null,
                     apiKey = credential.apiKey,
                     accessToken = null,
+                    sessionCookie = credential.sessionCookie,
                     userId = credential.userId,
                     createdAt = createdAt,
                     updatedAt = updatedAt,
@@ -195,7 +200,14 @@ class ServerRepository(
                 ServerType.SONARR,
                 ServerType.RADARR,
                 ServerType.JELLYSEERR,
-                -> StoredCredential.ApiKey(apiKey ?: throw IllegalStateException("Missing api key"), userId = userId)
+                -> {
+                    val key = apiKey
+                    val cookie = sessionCookie
+                    if (key.isNullOrBlank() && cookie.isNullOrBlank()) {
+                        throw IllegalStateException("Missing Jellyseerr credentials")
+                    }
+                    StoredCredential.ApiKey(apiKey = key, userId = userId, sessionCookie = cookie)
+                }
             }
 
         return ManagedServer(
