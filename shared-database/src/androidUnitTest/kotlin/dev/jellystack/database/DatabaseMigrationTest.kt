@@ -33,6 +33,7 @@ class DatabaseMigrationTest {
 
     @Test
     fun migrateFromVersion1AddsSeriesColumns() {
+        driver.execute(null, LEGACY_CREATE_SERVERS, 0)
         driver.execute(null, LEGACY_CREATE_ITEMS, 0)
         driver.execute(null, "PRAGMA user_version = 1", 0)
 
@@ -101,6 +102,23 @@ class DatabaseMigrationTest {
                 season_id TEXT,
                 episode_title TEXT,
                 last_played TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            """
+
+        private const val LEGACY_CREATE_SERVERS =
+            """
+            CREATE TABLE servers (
+                id TEXT NOT NULL PRIMARY KEY,
+                type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                username TEXT,
+                device_id TEXT,
+                api_key TEXT,
+                access_token TEXT,
+                user_id TEXT,
+                created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
             """

@@ -1,7 +1,6 @@
 package dev.jellystack.core.server
 
-import dev.jellystack.core.security.SecretValue
-import dev.jellystack.core.security.SecureStore
+import dev.jellystack.core.security.FakeSecureStore
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
 import kotlin.test.Test
@@ -224,23 +223,4 @@ private class InMemoryServerStore : ServerStore {
     override suspend fun delete(id: String) {
         items.remove(id)
     }
-}
-
-private class FakeSecureStore : SecureStore {
-    private val items = mutableMapOf<String, SecretValue>()
-
-    override suspend fun write(
-        key: String,
-        value: SecretValue,
-    ) {
-        items[key] = value
-    }
-
-    override suspend fun read(key: String): SecretValue? = items[key]
-
-    override suspend fun remove(key: String) {
-        items.remove(key)
-    }
-
-    fun peek(key: String): SecretValue? = items[key]
 }

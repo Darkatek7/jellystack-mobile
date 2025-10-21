@@ -131,7 +131,7 @@ class GeneratedClientsTest {
                 }
 
             val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
-            val api = JellyseerrStatusApi(client, "https://requests.local", "api-key")
+            val api = JellyseerrStatusApi(client, "https://requests.local", "api-key", null)
 
             val result = api.fetchStatus()
             assertEquals("1.8.0", result.version)
@@ -139,6 +139,31 @@ class GeneratedClientsTest {
             val request = recorded.single()
             assertEquals("/api/v1/status", request.url.encodedPath)
             assertEquals("api-key", request.headers["X-Api-Key"])
+
+            client.close()
+        }
+
+    @Test
+    fun jellyseerrStatusUsesSessionCookieWhenAvailable() =
+        runTest {
+            val recorded = mutableListOf<HttpRequestData>()
+            val engine =
+                MockEngine { request ->
+                    recorded += request
+                    respond(
+                        content =
+                            """{"version":"1.8.0","commitTag":"abcdef"}""",
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+
+            val client = NetworkClientFactory.create(ClientConfig(engine = engine, installLogging = false))
+            val api = JellyseerrStatusApi(client, "https://requests.local", null, "session=abc123")
+
+            api.fetchStatus()
+
+            val request = recorded.single()
+            assertEquals("session=abc123", request.headers[HttpHeaders.Cookie])
 
             client.close()
         }

@@ -1,7 +1,6 @@
 package dev.jellystack.core.jellyseerr
 
-import dev.jellystack.core.security.SecretValue
-import dev.jellystack.core.security.SecureStore
+import dev.jellystack.core.security.FakeSecureStore
 import dev.jellystack.core.server.ConnectivityResult
 import dev.jellystack.core.server.CredentialInput
 import dev.jellystack.core.server.ServerCredentialVault
@@ -20,7 +19,8 @@ import kotlin.test.assertFailsWith
 
 class JellyseerrSsoAuthenticatorTest {
     @Test
-    fun authenticatesUsingStoredJellyfinPassword() = runTest {
+    fun authenticatesUsingStoredJellyfinPassword() =
+        runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -57,7 +57,8 @@ class JellyseerrSsoAuthenticatorTest {
         }
 
     @Test
-    fun throwsWhenLinkedServerMissing() = runTest {
+    fun throwsWhenLinkedServerMissing() =
+        runTest {
             val vault = ServerCredentialVault(FakeSecureStore())
             val repository = repository(jellyfinCredential(), vault)
             val authenticator = FakeJellyseerrAuthenticator()
@@ -82,7 +83,8 @@ class JellyseerrSsoAuthenticatorTest {
         }
 
     @Test
-    fun throwsWhenPasswordNotStored() = runTest {
+    fun throwsWhenPasswordNotStored() =
+        runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -119,7 +121,8 @@ class JellyseerrSsoAuthenticatorTest {
         }
 
     @Test
-    fun usesManualPasswordWhenProvided() = runTest {
+    fun usesManualPasswordWhenProvided() =
+        runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -157,7 +160,8 @@ class JellyseerrSsoAuthenticatorTest {
         }
 
     @Test
-    fun capturesSessionCookieWhenApiKeyMissing() = runTest {
+    fun capturesSessionCookieWhenApiKeyMissing() =
+        runTest {
             val storedCredential = jellyfinCredential()
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
@@ -259,23 +263,6 @@ class JellyseerrSsoAuthenticatorTest {
 
         override suspend fun delete(id: String) {
             items.remove(id)
-        }
-    }
-
-    private class FakeSecureStore : SecureStore {
-        private val items = mutableMapOf<String, SecretValue>()
-
-        override suspend fun write(
-            key: String,
-            value: SecretValue,
-        ) {
-            items[key] = value
-        }
-
-        override suspend fun read(key: String): SecretValue? = items[key]
-
-        override suspend fun remove(key: String) {
-            items.remove(key)
         }
     }
 }
