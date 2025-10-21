@@ -5,7 +5,9 @@ import dev.jellystack.core.server.ServerCredentialVault
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class JellyfinServerComponents(
     val hostname: String,
     val port: Int,

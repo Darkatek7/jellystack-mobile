@@ -4,6 +4,7 @@ import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -27,6 +28,12 @@ private const val API_PREFIX = "/api/v1"
 private const val HEADER_API_KEY = "X-API-Key"
 private const val HEADER_API_USER = "X-API-User"
 
+interface JellyseerrSessionCookieHandler {
+    suspend fun currentCookie(): String?
+
+    suspend fun refreshCookie(): String?
+}
+
 /**
  * Thin wrapper over Jellyseerr REST API endpoints used by the app.
  * Handles common headers and request building but keeps response models close
@@ -36,15 +43,19 @@ class JellyseerrApi internal constructor(
     private val client: HttpClient,
     private val apiBaseUrl: String,
     private val apiKey: String?,
-    private val sessionCookie: String?,
+    sessionCookie: String?,
+    private val sessionHandler: JellyseerrSessionCookieHandler?,
     private val apiUserId: Int? = null,
 ) {
+    private var sessionCookieCache: String? = sessionCookie
+
     companion object {
         fun create(
             baseUrl: String,
             apiKey: String?,
             sessionCookie: String? = null,
             apiUserId: Int? = null,
+            sessionHandler: JellyseerrSessionCookieHandler? = null,
             client: HttpClient? = null,
             clientConfig: ClientConfig.() -> Unit = {},
         ): JellyseerrApi {
@@ -56,7 +67,14 @@ class JellyseerrApi internal constructor(
                             installLogging = false,
                         ).apply(clientConfig),
                     )
-            return JellyseerrApi(httpClient, normalizedBase + API_PREFIX, apiKey, sessionCookie, apiUserId)
+            return JellyseerrApi(
+                client = httpClient,
+                apiBaseUrl = normalizedBase + API_PREFIX,
+                apiKey = apiKey,
+                sessionCookie = sessionCookie,
+                sessionHandler = sessionHandler,
+                apiUserId = apiUserId,
+            )
         }
     }
 
@@ -65,15 +83,18 @@ class JellyseerrApi internal constructor(
         page: Int = 1,
         language: String? = null,
     ): JellyseerrSearchResponseDto =
-        client
-            .get("$apiBaseUrl/search") {
-                applyAuthHeaders()
-                parameter("query", query)
-                parameter("page", page)
-                if (!language.isNullOrBlank()) {
-                    parameter("language", language)
-                }
-            }.body()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/search") {
+                    applyAuthHeaders(cookie)
+                    parameter("query", query)
+                    parameter("page", page)
+                    if (!language.isNullOrBlank()) {
+                        parameter("language", language)
+                    }
+                }.body()
+        }
 
     suspend fun listRequests(
         take: Int = 20,
@@ -84,31 +105,40 @@ class JellyseerrApi internal constructor(
         mediaType: String? = null,
         requestedBy: Int? = null,
     ): JellyseerrRequestsResponseDto =
-        client
-            .get("$apiBaseUrl/request") {
-                applyAuthHeaders()
-                parameter("take", take)
-                parameter("skip", skip)
-                filter?.let { parameter("filter", it) }
-                sort?.let { parameter("sort", it) }
-                sortDirection?.let { parameter("sortDirection", it) }
-                mediaType?.let { parameter("mediaType", it) }
-                requestedBy?.let { parameter("requestedBy", it) }
-            }.body()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/request") {
+                    applyAuthHeaders(cookie)
+                    parameter("take", take)
+                    parameter("skip", skip)
+                    filter?.let { parameter("filter", it) }
+                    sort?.let { parameter("sort", it) }
+                    sortDirection?.let { parameter("sortDirection", it) }
+                    mediaType?.let { parameter("mediaType", it) }
+                    requestedBy?.let { parameter("requestedBy", it) }
+                }.body()
+        }
 
     suspend fun getRequestCounts(): JellyseerrRequestCountsDto =
-        client
-            .get("$apiBaseUrl/request/count") {
-                applyAuthHeaders()
-            }.body()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/request/count") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
 
     suspend fun createRequest(payload: JellyseerrCreateRequestPayload): JellyseerrRequestDto =
-        client
-            .post("$apiBaseUrl/request") {
-                applyAuthHeaders()
-                contentType(ContentType.Application.Json)
-                setBody(payload)
-            }.toBodyOrThrow()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .post("$apiBaseUrl/request") {
+                    applyAuthHeaders(cookie)
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }.toBodyOrThrow()
+        }
 
     suspend fun loginWithJellyfin(payload: JellyseerrJellyfinLoginPayload): JellyseerrUserDto =
         client
@@ -131,8 +161,11 @@ class JellyseerrApi internal constructor(
     }
 
     suspend fun deleteRequest(requestId: Int) {
-        client.delete("$apiBaseUrl/request/$requestId") {
-            applyAuthHeaders()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client.delete("$apiBaseUrl/request/$requestId") {
+                applyAuthHeaders(cookie)
+            }
         }
     }
 
@@ -140,20 +173,29 @@ class JellyseerrApi internal constructor(
         requestId: Int,
         status: String,
     ): JellyseerrRequestDto =
-        client
-            .post("$apiBaseUrl/request/$requestId/$status") {
-                applyAuthHeaders()
-            }.body()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .post("$apiBaseUrl/request/$requestId/$status") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
 
     suspend fun retryRequest(requestId: Int): JellyseerrRequestDto =
-        client
-            .post("$apiBaseUrl/request/$requestId/retry") {
-                applyAuthHeaders()
-            }.body()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .post("$apiBaseUrl/request/$requestId/retry") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
 
     suspend fun deleteMedia(mediaId: Int) {
-        client.delete("$apiBaseUrl/media/$mediaId") {
-            applyAuthHeaders()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client.delete("$apiBaseUrl/media/$mediaId") {
+                applyAuthHeaders(cookie)
+            }
         }
     }
 
@@ -161,23 +203,71 @@ class JellyseerrApi internal constructor(
         mediaId: Int,
         is4k: Boolean = false,
     ) {
-        client.delete("$apiBaseUrl/media/$mediaId/file") {
-            applyAuthHeaders()
-            parameter("is4k", is4k)
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client.delete("$apiBaseUrl/media/$mediaId/file") {
+                applyAuthHeaders(cookie)
+                parameter("is4k", is4k)
+            }
         }
     }
 
     suspend fun getProfile(): JellyseerrProfileDto =
-        client
-            .get("$apiBaseUrl/auth/me") {
-                applyAuthHeaders()
-            }.body()
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/auth/me") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.applyAuthHeaders() {
+    private suspend fun prepareSessionCookie(): String? {
+        val handlerCookie = sessionHandler?.currentCookie()
+        if (!handlerCookie.isNullOrBlank()) {
+            sessionCookieCache = handlerCookie
+        }
+        return sessionCookieCache
+    }
+
+    private fun io.ktor.client.request.HttpRequestBuilder.applyAuthHeaders(cookie: String?) {
         apiKey?.let { header(HEADER_API_KEY, it) }
         apiUserId?.let { header(HEADER_API_USER, it) }
-        sessionCookie?.takeIf { it.isNotBlank() }?.let { header(HttpHeaders.Cookie, it) }
+        cookie?.takeIf { it.isNotBlank() }?.let { header(HttpHeaders.Cookie, it) }
     }
+
+    private suspend fun <T> withSessionRetry(block: suspend () -> T): T {
+        var attempt = 0
+        var lastError: Throwable? = null
+        while (attempt < 2) {
+            try {
+                return block()
+            } catch (error: Throwable) {
+                lastError = error
+                val handler = sessionHandler
+                if (handler == null || !shouldRefreshSession(error) || attempt == 1) {
+                    throw error
+                }
+                val refreshResult = runCatching { handler.refreshCookie() }
+                if (refreshResult.isFailure) {
+                    throw error
+                }
+                sessionCookieCache = refreshResult.getOrNull()
+                attempt++
+            }
+        }
+        throw lastError ?: IllegalStateException("Session retry failed")
+    }
+
+    private fun shouldRefreshSession(error: Throwable): Boolean =
+        when (error) {
+            is ClientRequestException ->
+                error.response.status == HttpStatusCode.Unauthorized ||
+                    error.response.status == HttpStatusCode.Forbidden
+            is JellyseerrHttpException ->
+                error.status == HttpStatusCode.Unauthorized ||
+                    error.status == HttpStatusCode.Forbidden
+            else -> false
+        }
 
     private suspend inline fun <reified T> HttpResponse.toBodyOrThrow(): T {
         if (!status.isSuccess()) {
