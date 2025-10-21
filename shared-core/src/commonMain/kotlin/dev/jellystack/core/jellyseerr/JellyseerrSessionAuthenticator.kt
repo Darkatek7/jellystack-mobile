@@ -21,6 +21,7 @@ class JellyseerrSessionAuthenticator(
     private val serverRepository: ServerRepository,
     private val ssoAuthenticator: JellyseerrSsoAuthenticator,
     private val credentialVault: ServerCredentialVault,
+    private val sessionRepository: JellyseerrSessionRepository,
 ) {
     private val handlers = mutableMapOf<String, SessionHandler>()
     private val mutex = Mutex()
@@ -30,6 +31,7 @@ class JellyseerrSessionAuthenticator(
         metadata: JellyseerrSessionMetadata,
     ) {
         credentialVault.saveJellyseerrSessionMetadata(jellyseerrServerId, metadata)
+        persistSessionSnapshot(jellyseerrServerId, metadata)
         mutex.withLock {
             handlers.remove(jellyseerrServerId)
         }
@@ -37,6 +39,7 @@ class JellyseerrSessionAuthenticator(
 
     suspend fun clearLink(jellyseerrServerId: String) {
         credentialVault.removeJellyseerrSessionMetadata(jellyseerrServerId)
+        sessionRepository.clear(jellyseerrServerId)
         mutex.withLock {
             handlers.remove(jellyseerrServerId)
         }
@@ -90,7 +93,24 @@ class JellyseerrSessionAuthenticator(
                         ),
                 ),
             )
+            persistSessionSnapshot(serverId, metadata)
             return currentCookie()
         }
+    }
+
+    private suspend fun persistSessionSnapshot(
+        jellyseerrServerId: String,
+        metadata: JellyseerrSessionMetadata,
+    ) {
+        val server = serverRepository.findServer(jellyseerrServerId) ?: return
+        val credential = server.credentials as? StoredCredential.ApiKey ?: return
+        sessionRepository.save(
+            jellyseerrServerId,
+            JellyseerrSessionSecrets(
+                baseUrl = server.baseUrl,
+                jellyfinServerId = metadata.jellyfinServerId,
+                sessionCookie = credential.sessionCookie,
+            ),
+        )
     }
 }

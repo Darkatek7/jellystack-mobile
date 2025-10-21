@@ -1,9 +1,10 @@
 package dev.jellystack.core.server
 
+import dev.jellystack.core.jellyseerr.JellyseerrSessionMetadata
 import dev.jellystack.core.security.SecretValue
 import dev.jellystack.core.security.SecureStore
+import dev.jellystack.core.security.SecureStoreKeys
 import dev.jellystack.core.security.secretValue
-import dev.jellystack.core.jellyseerr.JellyseerrSessionMetadata
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -12,6 +13,7 @@ class ServerCredentialVault(
     private val secureStore: SecureStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+
     suspend fun saveJellyfinPassword(
         serverId: String,
         password: String,
@@ -60,6 +62,7 @@ class ServerCredentialVault(
     suspend fun removeJellyseerrSessionMetadata(serverId: String) {
         val key = jellyseerrMetadataKey(serverId)
         secureStore.remove(key)
+        secureStore.remove(SecureStoreKeys.Jellyseerr.session(serverId))
     }
 
     private fun jellyfinPasswordKey(serverId: String): String = "servers.$serverId.jellyfin.password"

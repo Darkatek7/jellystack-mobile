@@ -1,22 +1,23 @@
 package dev.jellystack.core.jellyseerr
 
 import dev.jellystack.core.security.FakeSecureStore
-import dev.jellystack.core.server.CredentialInput
 import dev.jellystack.core.server.ConnectivityResult
+import dev.jellystack.core.server.CredentialInput
 import dev.jellystack.core.server.ManagedServer
 import dev.jellystack.core.server.ServerConnectivity
 import dev.jellystack.core.server.ServerCredentialVault
+import dev.jellystack.core.server.ServerRecord
 import dev.jellystack.core.server.ServerRegistration
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerStore
 import dev.jellystack.core.server.ServerType
 import dev.jellystack.core.server.StoredCredential
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class JellyseerrSessionAuthenticatorTest {
     @Test
@@ -24,6 +25,7 @@ class JellyseerrSessionAuthenticatorTest {
         runTest {
             val secureStore = FakeSecureStore()
             val vault = ServerCredentialVault(secureStore)
+            val sessionRepository = JellyseerrSessionRepository(secureStore)
             val store = InMemoryServerStore()
             val connectivity = testConnectivity()
             val repository = ServerRepository(store, connectivity, vault, clock = FixedClock)
@@ -64,7 +66,7 @@ class JellyseerrSessionAuthenticatorTest {
                             ),
                     ),
                 )
-            val sessionAuthenticator = JellyseerrSessionAuthenticator(repository, sso, vault)
+            val sessionAuthenticator = JellyseerrSessionAuthenticator(repository, sso, vault, sessionRepository)
             sessionAuthenticator.rememberLink(
                 jellyseerrServerId = jellyseerrServer.id,
                 metadata = JellyseerrSessionMetadata(jellyfinServer.id, components),
@@ -72,14 +74,17 @@ class JellyseerrSessionAuthenticatorTest {
 
             val reloadedRepository = ServerRepository(store, connectivity, vault, clock = FixedClock)
             val reloadedSso = JellyseerrSsoAuthenticator(reloadedRepository, fakeAuthenticator, vault)
-            val reloadedSessionAuthenticator = JellyseerrSessionAuthenticator(reloadedRepository, reloadedSso, vault)
+            val reloadedSessionRepository = JellyseerrSessionRepository(secureStore)
+            val reloadedSessionAuthenticator =
+                JellyseerrSessionAuthenticator(reloadedRepository, reloadedSso, vault, reloadedSessionRepository)
             val reloadedEnvironment =
                 reloadedRepository
                     .findServer(jellyseerrServer.id)
                     ?.toEnvironment()
-            val handler = reloadedEnvironment?.let { env ->
-                reloadedSessionAuthenticator.sessionHandler(env)
-            }
+            val handler =
+                reloadedEnvironment?.let { env ->
+                    reloadedSessionAuthenticator.sessionHandler(env)
+                }
             assertNotNull(handler)
             assertEquals("connect.sid=abc", handler.currentCookie())
         }
@@ -102,6 +107,7 @@ class JellyseerrSessionAuthenticatorTest {
                     useSsl = false,
                 )
             val sso = JellyseerrSsoAuthenticator(repository, fakeAuthenticator, vault)
+            val sessionRepository = JellyseerrSessionRepository(secureStore)
             fakeAuthenticator.nextResult =
                 JellyseerrAuthenticationResult(
                     apiKey = null,
@@ -128,7 +134,7 @@ class JellyseerrSessionAuthenticatorTest {
                             ),
                     ),
                 )
-            val sessionAuthenticator = JellyseerrSessionAuthenticator(repository, sso, vault)
+            val sessionAuthenticator = JellyseerrSessionAuthenticator(repository, sso, vault, sessionRepository)
             sessionAuthenticator.rememberLink(
                 jellyseerrServerId = jellyseerrServer.id,
                 metadata = JellyseerrSessionMetadata(jellyfinServer.id, components),
@@ -162,7 +168,7 @@ class JellyseerrSessionAuthenticatorTest {
         )
     }
 
-    private fun registerJellyfin(repository: ServerRepository): ManagedServer =
+    private suspend fun registerJellyfin(repository: ServerRepository): ManagedServer =
         repository.register(
             ServerRegistration(
                 type = ServerType.JELLYFIN,

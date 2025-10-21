@@ -6,11 +6,15 @@ import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
 import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
 import dev.jellystack.core.jellyfin.ServerRepositoryEnvironmentProvider
 import dev.jellystack.core.jellyfin.defaultJellyfinBrowseApiFactory
+import dev.jellystack.core.jellyseerr.ClearJellyseerrSessionUseCase
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrSessionAuthenticator
+import dev.jellystack.core.jellyseerr.JellyseerrSessionRepository
 import dev.jellystack.core.jellyseerr.JellyseerrSsoAuthenticator
+import dev.jellystack.core.jellyseerr.LoadJellyseerrSessionUseCase
+import dev.jellystack.core.jellyseerr.SaveJellyseerrSessionUseCase
 import dev.jellystack.core.jellyseerr.ServerRepositoryJellyseerrEnvironmentProvider
 import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.security.SecureStore
@@ -51,7 +55,11 @@ fun coreModule(): Module =
         single<JellyseerrEnvironmentProvider> { ServerRepositoryJellyseerrEnvironmentProvider(get()) }
         single<JellyfinBrowseApiFactory> { defaultJellyfinBrowseApiFactory() }
         single { JellyfinBrowseRepository(get(), get(), get(), get(), get()) }
-        single { JellyseerrSessionAuthenticator(get(), get(), get()) }
+        single { JellyseerrSessionRepository(get()) }
+        single { SaveJellyseerrSessionUseCase(get()) }
+        single { LoadJellyseerrSessionUseCase(get()) }
+        single { ClearJellyseerrSessionUseCase(get()) }
+        single { JellyseerrSessionAuthenticator(get(), get(), get(), get()) }
         single { JellyseerrRepository(sessionAuthenticator = get()) }
         single { JellyseerrAuthenticator() }
         single { JellyseerrSsoAuthenticator(get(), get(), get()) }

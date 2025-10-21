@@ -771,13 +771,13 @@ fun JellystackRoot(
                                     name = form.name.ifBlank { "${linkedServer.name} Requests" },
                                     baseUrl = normalizedUrl,
                                     credentials =
-                                    CredentialInput.ApiKey(
-                                        apiKey = authResult.apiKey,
-                                        userId = authResult.userId?.toString(),
-                                        sessionCookie = authResult.sessionCookie,
+                                        CredentialInput.ApiKey(
+                                            apiKey = authResult.apiKey,
+                                            userId = authResult.userId?.toString(),
+                                            sessionCookie = authResult.sessionCookie,
+                                        ),
                                 ),
-                            ),
-                        )
+                            )
                         jellyseerrSessionAuthenticator.rememberLink(
                             jellyseerrServerId = registered.id,
                             metadata =
