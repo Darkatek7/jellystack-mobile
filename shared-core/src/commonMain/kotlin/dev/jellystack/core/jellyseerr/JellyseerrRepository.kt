@@ -14,8 +14,8 @@ import dev.jellystack.network.jellyseerr.JellyseerrRequestsResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResultDto
 import dev.jellystack.network.jellyseerr.JellyseerrSeasonDto
-import dev.jellystack.network.jellyseerr.JellyseerrUserDto
 import dev.jellystack.network.jellyseerr.JellyseerrSessionCookieHandler
+import dev.jellystack.network.jellyseerr.JellyseerrUserDto
 import dev.jellystack.network.jellyseerr.seasonsAll
 import dev.jellystack.network.jellyseerr.seasonsList
 import io.ktor.client.HttpClient
@@ -37,6 +37,7 @@ class JellyseerrRepository(
 ) {
     private val client: HttpClient =
         httpClient ?: NetworkClientFactory.create(ClientConfig(installLogging = false))
+
     private data class CachedApi(
         val api: JellyseerrApi,
         val handler: JellyseerrSessionCookieHandler?,

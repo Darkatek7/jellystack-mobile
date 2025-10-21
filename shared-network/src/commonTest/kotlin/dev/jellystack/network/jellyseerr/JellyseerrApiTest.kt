@@ -1,21 +1,18 @@
 package dev.jellystack.network.jellyseerr
 
-import dev.jellystack.network.NetworkJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.ByteReadChannel
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.test.runTest
 
 class JellyseerrApiTest {
     @Test
@@ -34,14 +31,12 @@ class JellyseerrApiTest {
                             headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
                         )
                     } else {
-                        respondSuccessfulProfile()
+                        respondSuccessfulEmpty()
                     }
                 }
             val client =
                 HttpClient(engine) {
-                    install(ContentNegotiation) {
-                        json(NetworkJson.default)
-                    }
+                    expectSuccess = true
                 }
             var currentCookie = "connect.sid=initial"
             var refreshCount = 0
@@ -64,21 +59,17 @@ class JellyseerrApiTest {
                     client = client,
                 )
 
-            val profile = api.getProfile()
+            api.deleteRequest(123)
 
-            assertEquals("Test User", profile.displayName)
             assertEquals(2, captured.size)
             assertEquals("connect.sid=initial", captured.first().headers[HttpHeaders.Cookie])
             assertEquals("connect.sid=refreshed", captured.last().headers[HttpHeaders.Cookie])
             assertEquals(1, refreshCount)
         }
 
-    private fun MockRequestHandleScope.respondSuccessfulProfile() =
+    private fun MockRequestHandleScope.respondSuccessfulEmpty() =
         respond(
-            content =
-                ByteReadChannel(
-                    """{"id":1,"displayName":"Test User","permissions":1}""",
-                ),
+            content = ByteReadChannel.Empty,
             status = HttpStatusCode.OK,
             headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
         )
