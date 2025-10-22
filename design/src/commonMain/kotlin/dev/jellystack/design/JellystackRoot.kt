@@ -84,6 +84,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrAuthenticationException
 import dev.jellystack.core.jellyseerr.JellyseerrAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrCreateSelection
 import dev.jellystack.core.jellyseerr.JellyseerrEnvironmentProvider
+import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfiles
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestFilter
@@ -984,14 +985,14 @@ fun JellystackRoot(
                                         onClearSearch = jellyseerrCoordinator::clearSearch,
                                         onSelectFilter = jellyseerrCoordinator::selectFilter,
                                         onRefresh = jellyseerrCoordinator::refresh,
-                                        onCreateRequest = { item, is4k ->
+                                        onCreateRequest = { item, profile ->
                                             val selection =
                                                 if (item.mediaType == JellyseerrMediaType.TV) {
                                                     JellyseerrCreateSelection.AllSeasons
                                                 } else {
                                                     null
                                                 }
-                                            jellyseerrCoordinator.submitRequest(item, is4k, selection)
+                                            jellyseerrCoordinator.submitRequest(item, profile, selection)
                                         },
                                         onDeleteRequest = { summary ->
                                             jellyseerrCoordinator.deleteRequest(summary.id)
@@ -1115,6 +1116,7 @@ private fun JellystackPreviewRoot(
                 message = null,
                 isAdmin = true,
                 lastUpdated = null,
+                languageProfiles = JellyseerrLanguageProfiles.EMPTY,
             )
         }
 

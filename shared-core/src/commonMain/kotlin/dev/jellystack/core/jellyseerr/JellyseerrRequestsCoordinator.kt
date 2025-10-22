@@ -34,6 +34,7 @@ class JellyseerrRequestsCoordinator(
     private var lastCounts: JellyseerrRequestCounts? = null
     private var currentQuery: String = ""
     private var lastSearchResults: List<JellyseerrSearchItem> = emptyList()
+    private var lastLanguageProfiles: JellyseerrLanguageProfiles = JellyseerrLanguageProfiles.EMPTY
     private var pollJob: Job? = null
     private var lastUpdated: Instant? = null
 
@@ -137,7 +138,7 @@ class JellyseerrRequestsCoordinator(
 
     fun submitRequest(
         item: JellyseerrSearchItem,
-        is4k: Boolean = false,
+        languageProfile: JellyseerrLanguageProfileOption?,
         seasons: JellyseerrCreateSelection? = null,
     ) {
         scope.launch {
@@ -145,13 +146,38 @@ class JellyseerrRequestsCoordinator(
             mutex.withLock {
                 updateReadyState { it.copy(isPerformingAction = true) }
             }
+            val availableProfiles =
+                when (item.mediaType) {
+                    JellyseerrMediaType.MOVIE -> lastLanguageProfiles.movies
+                    JellyseerrMediaType.TV -> lastLanguageProfiles.tv
+                    else -> emptyList()
+                }
+            val effectiveProfile = languageProfile ?: availableProfiles.preferredLanguageOption()
+            if (effectiveProfile == null) {
+                mutex.withLock {
+                    updateReadyState {
+                        it.copy(
+                            isPerformingAction = false,
+                            message =
+                                JellyseerrMessage(
+                                    JellyseerrMessageKind.ERROR,
+                                    "No language profiles are configured for this media type.",
+                                ),
+                        )
+                    }
+                }
+                return@launch
+            }
             val payload =
                 JellyseerrCreateRequest(
                     mediaId = item.mediaInfoId ?: item.tmdbId,
                     tvdbId = item.tvdbId,
                     mediaType = item.mediaType,
-                    is4k = is4k,
+                    is4k = effectiveProfile.is4k,
                     seasons = seasons,
+                    serverId = effectiveProfile.serviceId,
+                    profileId = effectiveProfile.profileId,
+                    languageProfileId = effectiveProfile.languageProfileId,
                 )
             when (val result = repository.createRequest(environment, payload)) {
                 is JellyseerrCreateResult.Success -> {
@@ -322,6 +348,7 @@ class JellyseerrRequestsCoordinator(
             lastCounts = null
             currentQuery = ""
             lastSearchResults = emptyList()
+            lastLanguageProfiles = JellyseerrLanguageProfiles.EMPTY
             lastUpdated = null
             _state.value =
                 when (environment) {
@@ -335,22 +362,31 @@ class JellyseerrRequestsCoordinator(
         JellystackLog.d(
             "Loading Jellyseerr environment ${environment.serverId} at ${environment.baseUrl}",
         )
+
+        data class InitialLoad(
+            val profile: JellyseerrProfile,
+            val page: JellyseerrRequestsPage,
+            val counts: JellyseerrRequestCounts,
+            val languageProfiles: JellyseerrLanguageProfiles,
+        )
         val loadResult =
             runCatching {
                 val profile = repository.profile(environment)
+                val languageProfiles = repository.fetchLanguageProfiles(environment)
                 val page = repository.fetchRequests(environment, currentFilter)
                 val counts = repository.fetchCounts(environment)
-                Triple(profile, page, counts)
+                InitialLoad(profile, page, counts, languageProfiles)
             }
         loadResult
-            .onSuccess { (profile, page, counts) ->
+            .onSuccess { result ->
                 JellystackLog.d(
-                    "Loaded Jellyseerr environment ${environment.serverId} with ${page.results.size} requests",
+                    "Loaded Jellyseerr environment ${environment.serverId} with ${result.page.results.size} requests",
                 )
                 mutex.withLock {
-                    currentProfile = profile
-                    lastRequests = page.results
-                    lastCounts = counts
+                    currentProfile = result.profile
+                    lastRequests = result.page.results
+                    lastCounts = result.counts
+                    lastLanguageProfiles = result.languageProfiles
                     lastUpdated = clock.now()
                     _state.value =
                         JellyseerrRequestsState.Ready(
@@ -363,8 +399,9 @@ class JellyseerrRequestsCoordinator(
                             isRefreshing = false,
                             isPerformingAction = false,
                             message = null,
-                            isAdmin = profile.canManageRequests(),
+                            isAdmin = result.profile.canManageRequests(),
                             lastUpdated = lastUpdated,
+                            languageProfiles = lastLanguageProfiles,
                         )
                 }
                 startPolling()
@@ -452,6 +489,9 @@ class JellyseerrRequestsCoordinator(
             }
         }
     }
+
+    private fun List<JellyseerrLanguageProfileOption>.preferredLanguageOption(): JellyseerrLanguageProfileOption? =
+        firstOrNull { it.isDefault } ?: firstOrNull()
 
     companion object {
         private const val DEFAULT_POLL_INTERVAL_MILLIS = 30_000L

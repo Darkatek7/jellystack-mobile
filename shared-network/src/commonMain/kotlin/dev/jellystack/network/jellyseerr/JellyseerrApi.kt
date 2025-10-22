@@ -152,6 +152,42 @@ class JellyseerrApi internal constructor(
                 }.toBodyOrThrow()
         }
 
+    suspend fun listRadarrServices(): List<JellyseerrServiceSummaryDto> =
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/service/radarr") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
+
+    suspend fun listSonarrServices(): List<JellyseerrServiceSummaryDto> =
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/service/sonarr") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
+
+    suspend fun getRadarrServiceDetails(serviceId: Int): JellyseerrServiceDetailsDto =
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/service/radarr/$serviceId") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
+
+    suspend fun getSonarrServiceDetails(serviceId: Int): JellyseerrServiceDetailsDto =
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/service/sonarr/$serviceId") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
+
     suspend fun loginWithCredentials(payload: JellyseerrLocalLoginPayload): JellyseerrUserDto =
         client
             .post("$apiBaseUrl/auth/local") {
@@ -428,6 +464,36 @@ data class JellyseerrCreateRequestPayload(
     @SerialName("languageProfileId") val languageProfileId: Int? = null,
     @SerialName("userId") val userId: Int? = null,
     @SerialName("tags") val tags: List<Int>? = null,
+)
+
+@Serializable
+data class JellyseerrServiceSummaryDto(
+    val id: Int,
+    val name: String? = null,
+    @SerialName("is4k") val is4k: Boolean? = null,
+    @SerialName("isDefault") val isDefault: Boolean? = null,
+    @SerialName("activeProfileId") val activeProfileId: Int? = null,
+    @SerialName("activeLanguageProfileId") val activeLanguageProfileId: Int? = null,
+)
+
+@Serializable
+data class JellyseerrServiceDetailsDto(
+    val server: JellyseerrServiceSummaryDto,
+    val profiles: List<JellyseerrQualityProfileDto> = emptyList(),
+    @SerialName("languageProfiles") val languageProfiles: List<JellyseerrLanguageProfileDto>? = null,
+)
+
+@Serializable
+data class JellyseerrQualityProfileDto(
+    val id: Int,
+    val name: String,
+)
+
+@Serializable
+data class JellyseerrLanguageProfileDto(
+    val id: Int,
+    val name: String,
+    @SerialName("profileId") val profileId: Int? = null,
 )
 
 fun seasonsAll(): JsonElement = JsonPrimitive("all")

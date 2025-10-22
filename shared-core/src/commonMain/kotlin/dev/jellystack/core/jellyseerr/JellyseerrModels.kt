@@ -183,7 +183,29 @@ data class JellyseerrCreateRequest(
     val mediaType: JellyseerrMediaType,
     val is4k: Boolean = false,
     val seasons: JellyseerrCreateSelection? = null,
+    val serverId: Int? = null,
+    val profileId: Int? = null,
+    val languageProfileId: Int? = null,
 )
+
+data class JellyseerrLanguageProfileOption(
+    val languageProfileId: Int?,
+    val name: String,
+    val serviceId: Int?,
+    val serviceName: String?,
+    val is4k: Boolean,
+    val isDefault: Boolean,
+    val profileId: Int?,
+)
+
+data class JellyseerrLanguageProfiles(
+    val movies: List<JellyseerrLanguageProfileOption>,
+    val tv: List<JellyseerrLanguageProfileOption>,
+) {
+    companion object {
+        val EMPTY = JellyseerrLanguageProfiles(emptyList(), emptyList())
+    }
+}
 
 data class JellyseerrProfile(
     val id: Int,
@@ -217,6 +239,7 @@ sealed interface JellyseerrRequestsState {
         val message: JellyseerrMessage?,
         val isAdmin: Boolean,
         val lastUpdated: Instant?,
+        val languageProfiles: JellyseerrLanguageProfiles,
     ) : JellyseerrRequestsState
 
     data class Error(
