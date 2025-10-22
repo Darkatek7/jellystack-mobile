@@ -176,6 +176,7 @@
 - Request flow for movie and series using shared form logic.
 - Status list: requested, approved, processing, available, including polling cadence.
 - Permission gate for admin versus standard user roles.
+- Create Jellyseerr login using Jellyseerr and Jellyfin accounts
 
 ## Checklist
 - Create request and observe status transitions.

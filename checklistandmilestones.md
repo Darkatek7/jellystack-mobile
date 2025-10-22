@@ -114,7 +114,9 @@ All items assume the Kotlin Multiplatform stack with shared Compose UI and nativ
 - [x] Option to remove media from sonarr/radarr using jellyseerr
 - [x] Duplicate request surfaces friendly error.
 - [x] Add Jellyseer URL through App Settings and auto authenticate with jellyfin user
-
+- [x] Add Jellyseerr login using Jellyserr account
+- [] Add Jellyserrr login using Jellyfin account
+ 
 ### 11. Sonarr management
 - [ ] Update quality profile and persist via API.
 - [ ] Add a series from search dialog.
