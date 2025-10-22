@@ -140,25 +140,12 @@ class JellyseerrApi internal constructor(
                 }.toBodyOrThrow()
         }
 
-    suspend fun loginWithJellyfin(payload: JellyseerrJellyfinLoginPayload): JellyseerrUserDto =
+    suspend fun loginWithCredentials(payload: JellyseerrLocalLoginPayload): JellyseerrUserDto =
         client
-            .post("$apiBaseUrl/auth/jellyfin") {
+            .post("$apiBaseUrl/auth/local") {
                 contentType(ContentType.Application.Json)
                 setBody(payload)
             }.body()
-
-    suspend fun fetchMainSettings(): JellyseerrMainSettingsDto =
-        client
-            .get("$apiBaseUrl/settings/main")
-            .body()
-
-    suspend fun logout(): Boolean {
-        val response =
-            client.post("$apiBaseUrl/auth/logout") {
-                contentType(ContentType.Application.Json)
-            }
-        return response.status.isSuccess()
-    }
 
     suspend fun deleteRequest(requestId: Int) {
         withSessionRetry {
@@ -424,18 +411,7 @@ fun seasonsAll(): JsonElement = JsonPrimitive("all")
 fun seasonsList(numbers: List<Int>): JsonElement = JsonArray(numbers.map { JsonPrimitive(it) })
 
 @Serializable
-data class JellyseerrJellyfinLoginPayload(
-    val username: String,
+data class JellyseerrLocalLoginPayload(
+    val email: String,
     val password: String,
-    val hostname: String? = null,
-    val port: Int? = null,
-    @SerialName("urlBase") val urlBase: String? = null,
-    @SerialName("useSsl") val useSsl: Boolean? = null,
-    @SerialName("serverType") val serverType: Int = 2,
-    val email: String? = null,
-)
-
-@Serializable
-data class JellyseerrMainSettingsDto(
-    @SerialName("apiKey") val apiKey: String? = null,
 )

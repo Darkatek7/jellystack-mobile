@@ -84,7 +84,6 @@ class ServerRepository(
         mutex.withLock {
             store.delete(id)
             credentialVault.removeJellyfinPassword(id)
-            credentialVault.removeJellyseerrSessionMetadata(id)
             refreshServers()
         }
     }

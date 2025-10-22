@@ -14,7 +14,6 @@ import dev.jellystack.network.jellyseerr.JellyseerrRequestsResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResultDto
 import dev.jellystack.network.jellyseerr.JellyseerrSeasonDto
-import dev.jellystack.network.jellyseerr.JellyseerrSessionCookieHandler
 import dev.jellystack.network.jellyseerr.JellyseerrUserDto
 import dev.jellystack.network.jellyseerr.seasonsAll
 import dev.jellystack.network.jellyseerr.seasonsList
@@ -31,7 +30,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class JellyseerrRepository(
-    private val sessionAuthenticator: JellyseerrSessionAuthenticator? = null,
     httpClient: HttpClient? = null,
     private val json: Json = NetworkJson.default,
 ) {
@@ -40,18 +38,15 @@ class JellyseerrRepository(
 
     private data class CachedApi(
         val api: JellyseerrApi,
-        val handler: JellyseerrSessionCookieHandler?,
     )
 
     private val apiCache = mutableMapOf<String, CachedApi>()
     private val credentialCache = mutableMapOf<String, Pair<String?, String?>>()
 
     private suspend fun api(environment: JellyseerrEnvironment): JellyseerrApi {
-        val handler = sessionAuthenticator?.sessionHandler(environment)
         val cacheEntry = apiCache[environment.serverId]
         if (
             cacheEntry != null &&
-            cacheEntry.handler === handler &&
             credentialCache[environment.serverId] == environment.apiKey to environment.sessionCookie
         ) {
             return cacheEntry.api
@@ -63,10 +58,9 @@ class JellyseerrRepository(
                     apiKey = environment.apiKey,
                     sessionCookie = environment.sessionCookie,
                     apiUserId = environment.apiUserId,
-                    sessionHandler = handler,
                     client = client,
                 )
-        apiCache[environment.serverId] = CachedApi(api, handler)
+        apiCache[environment.serverId] = CachedApi(api)
         credentialCache[environment.serverId] = environment.apiKey to environment.sessionCookie
         return api
     }

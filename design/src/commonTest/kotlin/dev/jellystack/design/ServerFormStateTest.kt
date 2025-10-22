@@ -6,25 +6,25 @@ import kotlin.test.assertTrue
 
 class ServerFormStateTest {
     @Test
-    fun jellyseerrFormValidWithLinkedServer() {
+    fun jellyseerrFormValidWithCredentials() {
         val state =
             ServerFormState(
                 type = ServerFormType.JELLYSEERR,
-                name = "Requests",
                 baseUrl = "https://requests.local",
-                jellyfinServerId = "srv-1",
+                email = "user@example.com",
+                password = "secret",
             )
 
         assertTrue(state.isValid)
     }
 
     @Test
-    fun jellyseerrFormInvalidWithoutLinkedServer() {
+    fun jellyseerrFormInvalidWithoutEmail() {
         val state =
             ServerFormState(
                 type = ServerFormType.JELLYSEERR,
                 baseUrl = "https://requests.local",
-                jellyfinServerId = null,
+                password = "secret",
             )
 
         assertFalse(state.isValid)
@@ -41,19 +41,5 @@ class ServerFormStateTest {
             )
 
         assertFalse(state.isValid)
-    }
-
-    @Test
-    fun jellyseerrFormRequiresPasswordWhenFlagged() {
-        val state =
-            ServerFormState(
-                type = ServerFormType.JELLYSEERR,
-                baseUrl = "https://requests.local",
-                jellyfinServerId = "srv-1",
-                requiresJellyseerrPassword = true,
-            )
-
-        assertFalse(state.isValid)
-        assertTrue(state.copy(password = "secret").isValid)
     }
 }

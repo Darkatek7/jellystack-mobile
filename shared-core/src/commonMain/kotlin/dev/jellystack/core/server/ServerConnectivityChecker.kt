@@ -131,7 +131,7 @@ class ServerConnectivityChecker(
     private suspend fun pingJellyseerr(registration: ServerRegistration): ConnectivityResult {
         val creds =
             registration.credentials as? CredentialInput.ApiKey
-                ?: return ConnectivityResult.Failure("Jellyseerr API key is required")
+                ?: return ConnectivityResult.Failure("Jellyseerr credentials are required")
         val hasApiKey = !creds.apiKey.isNullOrBlank()
         val hasCookie = !creds.sessionCookie.isNullOrBlank()
         if (!hasApiKey && !hasCookie) {
