@@ -18,11 +18,23 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.nullable
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 private const val API_PREFIX = "/api/v1"
 private const val HEADER_API_KEY = "X-API-Key"
@@ -396,7 +408,7 @@ data class JellyseerrProfileDto(
     val permissions: Int = 0,
     @SerialName("email") val email: String? = null,
     @SerialName("avatar") val avatar: String? = null,
-    @SerialName("userType") val userType: String? = null,
+    @SerialName("userType") @Serializable(with = JellyseerrUserTypeSerializer::class) val userType: Int? = null,
 )
 
 @Serializable
@@ -428,3 +440,32 @@ data class JellyseerrJellyfinLoginPayload(
     val username: String,
     val password: String,
 )
+
+@OptIn(ExperimentalSerializationApi::class)
+object JellyseerrUserTypeSerializer : KSerializer<Int?> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("JellyseerrUserType", PrimitiveKind.INT).nullable
+
+    override fun serialize(
+        encoder: Encoder,
+        value: Int?,
+    ) {
+        if (value == null) {
+            encoder.encodeNull()
+        } else {
+            encoder.encodeInt(value)
+        }
+    }
+
+    override fun deserialize(decoder: Decoder): Int? {
+        if (decoder is JsonDecoder) {
+            val element = decoder.decodeJsonElement()
+            return when (element) {
+                JsonNull -> null
+                is JsonPrimitive -> element.intOrNull ?: element.content.toIntOrNull()
+                else -> null
+            }
+        }
+        return decoder.decodeNullableSerializableValue(Int.serializer())
+    }
+}
