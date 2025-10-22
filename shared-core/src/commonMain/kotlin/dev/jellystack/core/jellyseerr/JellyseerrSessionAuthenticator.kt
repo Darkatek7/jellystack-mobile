@@ -37,6 +37,50 @@ class JellyseerrSessionAuthenticator(
         }
     }
 
+    suspend fun relink(
+        jellyseerrServerId: String,
+        passwordOverride: String? = null,
+    ): JellyseerrAuthenticationResult {
+        val metadata =
+            credentialVault.readJellyseerrSessionMetadata(jellyseerrServerId)
+                ?: throw JellyseerrAuthenticationException(
+                    message = "Requests server is not linked to Jellyfin.",
+                    reason = JellyseerrAuthenticationException.Reason.INVALID_LINKED_SERVER,
+                )
+        val server =
+            serverRepository.findServer(jellyseerrServerId)
+                ?: throw JellyseerrAuthenticationException(
+                    message = "Requests server could not be found.",
+                    reason = JellyseerrAuthenticationException.Reason.SERVER_NOT_FOUND,
+                )
+        val authResult =
+            ssoAuthenticator.authenticateWithLinkedJellyfin(
+                jellyseerrUrl = server.baseUrl,
+                jellyfinServerId = metadata.jellyfinServerId,
+                components = metadata.components,
+                passwordOverride = passwordOverride,
+            )
+        serverRepository.register(
+            ServerRegistration(
+                id = server.id,
+                type = ServerType.JELLYSEERR,
+                name = server.name,
+                baseUrl = server.baseUrl,
+                credentials =
+                    CredentialInput.ApiKey(
+                        apiKey = authResult.apiKey,
+                        userId = authResult.userId?.toString(),
+                        sessionCookie = authResult.sessionCookie,
+                    ),
+            ),
+        )
+        persistSessionSnapshot(server.id, metadata)
+        mutex.withLock {
+            handlers.remove(server.id)
+        }
+        return authResult
+    }
+
     suspend fun clearLink(jellyseerrServerId: String) {
         credentialVault.removeJellyseerrSessionMetadata(jellyseerrServerId)
         sessionRepository.clear(jellyseerrServerId)

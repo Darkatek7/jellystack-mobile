@@ -95,12 +95,15 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSessionAuthenticator
 import dev.jellystack.core.jellyseerr.JellyseerrSessionMetadata
+import dev.jellystack.core.jellyseerr.JellyseerrSessionRepository
+import dev.jellystack.core.jellyseerr.JellyseerrSessionSecrets
 import dev.jellystack.core.jellyseerr.JellyseerrSsoAuthenticator
 import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.core.preferences.ThemePreferenceRepository
 import dev.jellystack.core.server.ConnectivityException
 import dev.jellystack.core.server.CredentialInput
 import dev.jellystack.core.server.ManagedServer
+import dev.jellystack.core.server.ServerCredentialVault
 import dev.jellystack.core.server.ServerRegistration
 import dev.jellystack.core.server.ServerRepository
 import dev.jellystack.core.server.ServerType
@@ -209,6 +212,10 @@ private data class ServerManagementUiState(
     val form: ServerFormState = ServerFormState(),
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
+    val sessionMetadata: Map<String, JellyseerrSessionMetadata?> = emptyMap(),
+    val sessionSnapshots: Map<String, JellyseerrSessionSecrets?> = emptyMap(),
+    val relinkInFlight: Set<String> = emptySet(),
+    val relinkErrors: Map<String, String> = emptyMap(),
 )
 
 @Suppress("FunctionName", "ktlint:standard:function-naming")
@@ -272,6 +279,7 @@ fun JellystackRoot(
     val jellyseerrRepository = remember { koin.get<JellyseerrRepository>() }
     val jellyseerrSsoAuthenticator = remember { koin.get<JellyseerrSsoAuthenticator>() }
     val jellyseerrSessionAuthenticator = remember { koin.get<JellyseerrSessionAuthenticator>() }
+    val jellyseerrSessionRepository = remember { koin.get<JellyseerrSessionRepository>() }
     val jellyseerrEnvironmentProvider = remember { koin.get<JellyseerrEnvironmentProvider>() }
     val jellyseerrCoordinator =
         remember(jellyseerrRepository, jellyseerrEnvironmentProvider, coroutineScope) {
@@ -283,18 +291,55 @@ fun JellystackRoot(
         }
     val jellyseerrState by jellyseerrCoordinator.state.collectAsState()
     val serverRepository = remember { koin.get<ServerRepository>() }
+    val serverCredentialVault = remember { koin.get<ServerCredentialVault>() }
     val managedServers by serverRepository.observeServers().collectAsState()
+    val jellyseerrSessions by jellyseerrSessionRepository.observeSessions().collectAsState()
+    var jellyseerrMetadata by remember { mutableStateOf<Map<String, JellyseerrSessionMetadata?>>(emptyMap()) }
+    var relinkInFlight by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var relinkErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var pendingPasswordServer by remember { mutableStateOf<ManagedServer?>(null) }
     val browseCoordinator =
         remember(browseRepository, coroutineScope) {
             JellyfinBrowseCoordinator(browseRepository, coroutineScope)
         }
     val browseState by browseCoordinator.state.collectAsState()
 
+    LaunchedEffect(managedServers) {
+        val metadata = mutableMapOf<String, JellyseerrSessionMetadata?>()
+        managedServers.filter { it.type == ServerType.JELLYSEERR }.forEach { server ->
+            val linkedMetadata = runCatching { serverCredentialVault.readJellyseerrSessionMetadata(server.id) }.getOrNull()
+            metadata[server.id] = linkedMetadata
+            runCatching { jellyseerrSessionRepository.read(server.id) }
+        }
+        jellyseerrMetadata = metadata
+    }
+
     var showAddServerDialog by remember { mutableStateOf(false) }
     var serverFormState by remember { mutableStateOf(ServerFormState()) }
     var isSavingServer by remember { mutableStateOf(false) }
     var serverErrorMessage by remember { mutableStateOf<String?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+
+    val relinkRequests: (ManagedServer, String?) -> Unit = { server, passwordOverride ->
+        coroutineScope.launch {
+            relinkInFlight = relinkInFlight + server.id
+            relinkErrors = relinkErrors - server.id
+            try {
+                jellyseerrSessionAuthenticator.relink(server.id, passwordOverride)
+                jellyseerrCoordinator.refresh()
+            } catch (authError: JellyseerrAuthenticationException) {
+                if (authError.reason == Reason.MISSING_JELLYFIN_PASSWORD && passwordOverride.isNullOrBlank()) {
+                    pendingPasswordServer = server
+                } else {
+                    relinkErrors = relinkErrors + (server.id to (authError.message ?: "Unable to refresh requests link."))
+                }
+            } catch (t: Throwable) {
+                relinkErrors = relinkErrors + (server.id to t.connectivityErrorMessage())
+            } finally {
+                relinkInFlight = relinkInFlight - server.id
+            }
+        }
+    }
     val activePlaybackForDetail =
         (playbackState as? PlaybackState.Playing)?.takeIf {
             val loaded = detailState as? JellyfinDetailUiState.Loaded
@@ -392,6 +437,10 @@ fun JellystackRoot(
             form = serverFormState,
             isSaving = isSavingServer,
             errorMessage = serverErrorMessage,
+            sessionMetadata = jellyseerrMetadata,
+            sessionSnapshots = jellyseerrSessions,
+            relinkInFlight = relinkInFlight,
+            relinkErrors = relinkErrors,
         )
 
     val playbackAction: (JellyfinItem, JellyfinItemDetail) -> Unit = { item, detail ->
@@ -630,9 +679,25 @@ fun JellystackRoot(
     val onRefreshLibraries: () -> Unit = { browseCoordinator.bootstrap(forceRefresh = true) }
     val onLoadMore: () -> Unit = browseCoordinator::loadNextPage
 
-    val openAddServerDialog: () -> Unit = {
+    val openAddServerDialog: (ServerFormType) -> Unit = { defaultType ->
         serverErrorMessage = null
-        serverFormState = ServerFormState()
+        serverFormState =
+            when (defaultType) {
+                ServerFormType.JELLYFIN -> ServerFormState(type = ServerFormType.JELLYFIN)
+                ServerFormType.JELLYSEERR -> {
+                    val defaultLinkedServer = managedServers.firstOrNull { it.type == ServerType.JELLYFIN }
+                    val linkedCredential = defaultLinkedServer?.credentials as? StoredCredential.Jellyfin
+                    ServerFormState(
+                        type = ServerFormType.JELLYSEERR,
+                        name = defaultLinkedServer?.let { "${it.name} Requests" } ?: "",
+                        baseUrl = "",
+                        username = linkedCredential?.username ?: "",
+                        password = "",
+                        jellyfinServerId = defaultLinkedServer?.id,
+                        requiresJellyseerrPassword = false,
+                    )
+                }
+            }
         showAddServerDialog = true
     }
 
@@ -966,7 +1031,7 @@ fun JellystackRoot(
                                         onOpenItemDetail = onOpenItemDetail,
                                         onAddServer = {
                                             isSettingsOpen = true
-                                            openAddServerDialog()
+                                            openAddServerDialog(ServerFormType.JELLYFIN)
                                         },
                                         modifier = Modifier.padding(padding),
                                     )
@@ -980,7 +1045,7 @@ fun JellystackRoot(
                                         onOpenItemDetail = onOpenItemDetail,
                                         onAddServer = {
                                             isSettingsOpen = true
-                                            openAddServerDialog()
+                                            openAddServerDialog(ServerFormType.JELLYFIN)
                                         },
                                         showLibrarySelector = true,
                                         modifier = Modifier.padding(padding),
@@ -1058,8 +1123,8 @@ fun JellystackRoot(
                             isDarkTheme = isDarkTheme,
                             onToggleTheme = themeController::toggle,
                             serverState = serverUiState,
-                            onOpenAddServer = {
-                                openAddServerDialog()
+                            onOpenAddServer = { type ->
+                                openAddServerDialog(type)
                             },
                             onDismissAddServer = {
                                 dismissAddServerDialog()
@@ -1067,12 +1132,27 @@ fun JellystackRoot(
                             onUpdateServerForm = { serverFormState = it },
                             onSubmitServer = submitServer,
                             onRemoveServer = removeServer,
+                            onRelinkJellyseerr = { server ->
+                                relinkRequests(server, null)
+                            },
                             onClearServerError = { serverErrorMessage = null },
                             onClose = {
                                 showAddServerDialog = false
                                 serverFormState = ServerFormState()
                                 serverErrorMessage = null
                                 isSettingsOpen = false
+                            },
+                        )
+                    }
+                    val passwordTarget = pendingPasswordServer
+                    if (passwordTarget != null) {
+                        JellyseerrPasswordDialog(
+                            serverName = passwordTarget.name,
+                            isSubmitting = passwordTarget.id in relinkInFlight,
+                            onDismiss = { pendingPasswordServer = null },
+                            onSubmit = { password ->
+                                pendingPasswordServer = null
+                                relinkRequests(passwordTarget, password)
                             },
                         )
                     }
@@ -1258,11 +1338,12 @@ private fun JellystackPreviewRoot(
                             isDarkTheme = isDarkTheme,
                             onToggleTheme = themeController::toggle,
                             serverState = ServerManagementUiState(),
-                            onOpenAddServer = {},
+                            onOpenAddServer = { _ -> },
                             onDismissAddServer = {},
                             onUpdateServerForm = {},
                             onSubmitServer = {},
                             onRemoveServer = {},
+                            onRelinkJellyseerr = {},
                             onClearServerError = {},
                             onClose = { isSettingsOpen = false },
                         )
@@ -1539,11 +1620,12 @@ private fun SettingsDialog(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     serverState: ServerManagementUiState,
-    onOpenAddServer: () -> Unit,
+    onOpenAddServer: (ServerFormType) -> Unit,
     onDismissAddServer: () -> Unit,
     onUpdateServerForm: (ServerFormState) -> Unit,
     onSubmitServer: () -> Unit,
     onRemoveServer: (ManagedServer) -> Unit,
+    onRelinkJellyseerr: (ManagedServer) -> Unit,
     onClearServerError: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -1567,6 +1649,7 @@ private fun SettingsDialog(
                 onUpdateServerForm = onUpdateServerForm,
                 onSubmitServer = onSubmitServer,
                 onRemoveServer = onRemoveServer,
+                onRelinkJellyseerr = onRelinkJellyseerr,
                 onClearServerError = onClearServerError,
                 onClose = onClose,
             )
@@ -1580,15 +1663,17 @@ private fun SettingsContent(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     serverState: ServerManagementUiState,
-    onOpenAddServer: () -> Unit,
+    onOpenAddServer: (ServerFormType) -> Unit,
     onDismissAddServer: () -> Unit,
     onUpdateServerForm: (ServerFormState) -> Unit,
     onSubmitServer: () -> Unit,
     onRemoveServer: (ManagedServer) -> Unit,
+    onRelinkJellyseerr: (ManagedServer) -> Unit,
     onClearServerError: () -> Unit,
     onClose: () -> Unit,
 ) {
     val jellyfinServers = serverState.servers.filter { it.type == ServerType.JELLYFIN }
+    val jellyseerrServers = serverState.servers.filter { it.type == ServerType.JELLYSEERR }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier =
@@ -1654,7 +1739,7 @@ private fun SettingsContent(
             )
             if (jellyfinServers.isEmpty()) {
                 AssistChip(
-                    onClick = onOpenAddServer,
+                    onClick = { onOpenAddServer(ServerFormType.JELLYFIN) },
                     label = { Text("Connect a Jellyfin server") },
                 )
             } else {
@@ -1686,8 +1771,120 @@ private fun SettingsContent(
                     }
                 }
             }
-            Button(onClick = onOpenAddServer) {
-                Text("Add server")
+            Button(onClick = { onOpenAddServer(ServerFormType.JELLYFIN) }) {
+                Text("Add Jellyfin server")
+            }
+            HorizontalDivider()
+            Text(
+                text = "Requests",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            if (jellyseerrServers.isEmpty()) {
+                AssistChip(
+                    onClick = { onOpenAddServer(ServerFormType.JELLYSEERR) },
+                    enabled = jellyfinServers.isNotEmpty(),
+                    label = { Text("Connect a requests server") },
+                )
+                val guidance =
+                    if (jellyfinServers.isEmpty()) {
+                        "Add a Jellyfin server first to link requests."
+                    } else {
+                        "Link your Jellyseerr server to manage media requests."
+                    }
+                Text(
+                    text = guidance,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    jellyseerrServers.forEach { server ->
+                        val metadata = serverState.sessionMetadata[server.id]
+                        val secrets = serverState.sessionSnapshots[server.id]
+                        val credential = server.credentials as? StoredCredential.ApiKey
+                        val linkedServerName =
+                            metadata?.jellyfinServerId?.let { id ->
+                                serverState.servers.firstOrNull { it.id == id }?.name
+                            }
+                        val statusLines =
+                            buildList {
+                                if (metadata != null) {
+                                    add(linkedServerName?.let { "Linked to $it" } ?: "Linked Jellyfin server unavailable")
+                                } else {
+                                    add("Link configuration missing")
+                                }
+                                val hasApiKey = !credential?.apiKey.isNullOrBlank()
+                                val hasSession = !credential?.sessionCookie.isNullOrBlank()
+                                when {
+                                    hasApiKey && hasSession -> add("API key and session cookie stored")
+                                    hasApiKey -> add("API key stored")
+                                    hasSession -> add("Session cookie stored")
+                                    else -> add("Authentication required")
+                                }
+                                if (!secrets?.sessionCookie.isNullOrBlank()) {
+                                    add("Session snapshot available for relink")
+                                }
+                            }
+                        val errorMessage = serverState.relinkErrors[server.id]
+                        val isRelinking = server.id in serverState.relinkInFlight
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(server.name, style = MaterialTheme.typography.titleMedium)
+                                Text(server.baseUrl, style = MaterialTheme.typography.bodyMedium)
+                                statusLines.forEach { line ->
+                                    Text(
+                                        text = line,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                if (errorMessage != null) {
+                                    Text(
+                                        text = errorMessage,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (isRelinking) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                    }
+                                    TextButton(
+                                        onClick = { onRelinkJellyseerr(server) },
+                                        enabled = !isRelinking,
+                                    ) {
+                                        Text("Relink")
+                                    }
+                                    TextButton(
+                                        onClick = { onRemoveServer(server) },
+                                        enabled = !serverState.isSaving && !isRelinking,
+                                    ) {
+                                        Text("Remove")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                AssistChip(
+                    onClick = { onOpenAddServer(ServerFormType.JELLYSEERR) },
+                    enabled = jellyfinServers.isNotEmpty(),
+                    label = { Text("Connect another requests server") },
+                )
             }
         }
     }
@@ -1703,6 +1900,69 @@ private fun SettingsContent(
             onSubmit = onSubmitServer,
         )
     }
+}
+
+@Suppress("FunctionName")
+@Composable
+private fun JellyseerrPasswordDialog(
+    serverName: String,
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var password by remember(serverName) { mutableStateOf("") }
+    var passwordVisible by remember(serverName) { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
+        title = { Text("Enter Jellyfin password") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Provide the Jellyfin password for $serverName to refresh the requests link.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    enabled = !isSubmitting,
+                    visualTransformation =
+                        if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(imageVector = icon, contentDescription = if (passwordVisible) "Hide password" else "Show password")
+                        }
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val value = password.trim()
+                    onSubmit(value)
+                    password = ""
+                },
+                enabled = password.isNotBlank() && !isSubmitting,
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Linking…")
+                } else {
+                    Text("Continue")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 @Suppress("FunctionName")
