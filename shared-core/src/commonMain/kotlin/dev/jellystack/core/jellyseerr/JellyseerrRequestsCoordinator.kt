@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyseerr
 
+import dev.jellystack.core.logging.JellystackLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -101,6 +102,10 @@ class JellyseerrRequestsCoordinator(
                         }
                     }
                 }.onFailure { error ->
+                    JellystackLog.e(
+                        "Jellyseerr search failed for ${environment.serverId} with query '$trimmed': ${error.message}",
+                        error
+                    )
                     mutex.withLock {
                         lastSearchResults = emptyList()
                         updateReadyState {
@@ -222,6 +227,10 @@ class JellyseerrRequestsCoordinator(
                     }
                     refreshInternal(fetchCounts = true)
                 }.onFailure { error ->
+                    JellystackLog.e(
+                        "Failed to delete Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
+                        error
+                    )
                     mutex.withLock {
                         updateReadyState {
                             it.copy(
@@ -275,6 +284,10 @@ class JellyseerrRequestsCoordinator(
                     }
                     refreshInternal(fetchCounts = true)
                 }.onFailure { error ->
+                    JellystackLog.e(
+                        "Failed to remove Jellyseerr media ${summary.mediaId} for ${environment.serverId}: ${error.message}",
+                        error
+                    )
                     mutex.withLock {
                         updateReadyState {
                             it.copy(
@@ -319,7 +332,9 @@ class JellyseerrRequestsCoordinator(
         if (environment == null) {
             return
         }
-        println("handleEnvironmentChange called for ${environment.serverId}")
+        JellystackLog.d(
+            "Loading Jellyseerr environment ${environment.serverId} at ${environment.baseUrl}"
+        )
         val loadResult =
             runCatching {
                 val profile = repository.profile(environment)
@@ -329,7 +344,9 @@ class JellyseerrRequestsCoordinator(
             }
         loadResult
             .onSuccess { (profile, page, counts) ->
-                println("handleEnvironmentChange success: requests=${page.results.size}")
+                JellystackLog.d(
+                    "Loaded Jellyseerr environment ${environment.serverId} with ${page.results.size} requests"
+                )
                 mutex.withLock {
                     currentProfile = profile
                     lastRequests = page.results
@@ -352,7 +369,10 @@ class JellyseerrRequestsCoordinator(
                 }
                 startPolling()
             }.onFailure { error ->
-                println("handleEnvironmentChange failure: ${error.message}")
+                JellystackLog.e(
+                    "Failed to load Jellyseerr environment ${environment.serverId}: ${error.message}",
+                    error
+                )
                 mutex.withLock {
                     _state.value =
                         JellyseerrRequestsState.Error(error.message ?: "Failed to load Jellyseerr data.")
@@ -392,6 +412,10 @@ class JellyseerrRequestsCoordinator(
                     lastRequests = page.results
                     lastUpdated = clock.now()
                 }.onFailure { error ->
+                    JellystackLog.e(
+                        "Failed to refresh Jellyseerr requests for ${environment.serverId}: ${error.message}",
+                        error
+                    )
                     updateReadyState {
                         it.copy(
                             isRefreshing = false,

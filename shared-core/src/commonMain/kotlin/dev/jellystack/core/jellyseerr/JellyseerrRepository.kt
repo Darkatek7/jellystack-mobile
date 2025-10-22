@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyseerr
 
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.NetworkJson
@@ -71,20 +72,45 @@ class JellyseerrRepository(
         take: Int = DEFAULT_PAGE_SIZE,
         skip: Int = 0,
     ): JellyseerrRequestsPage {
-        val response = api(environment).listRequests(take = take, skip = skip, filter = filter.queryValue)
-        return response.toDomain()
+        return try {
+            val response = api(environment).listRequests(take = take, skip = skip, filter = filter.queryValue)
+            response.toDomain()
+        } catch (error: Throwable) {
+            JellystackLog.e(
+                "Failed to fetch Jellyseerr requests for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
+                error
+            )
+            throw error
+        }
     }
 
-    suspend fun fetchCounts(environment: JellyseerrEnvironment): JellyseerrRequestCounts = api(environment).getRequestCounts().toDomain()
+    suspend fun fetchCounts(environment: JellyseerrEnvironment): JellyseerrRequestCounts =
+        try {
+            api(environment).getRequestCounts().toDomain()
+        } catch (error: Throwable) {
+            JellystackLog.e(
+                "Failed to fetch Jellyseerr counts for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
+                error
+            )
+            throw error
+        }
 
     suspend fun search(
         environment: JellyseerrEnvironment,
         query: String,
         page: Int = 1,
     ): List<JellyseerrSearchItem> =
-        api(environment)
-            .search(query = query, page = page)
-            .toDomainSearchResults()
+        try {
+            api(environment)
+                .search(query = query, page = page)
+                .toDomainSearchResults()
+        } catch (error: Throwable) {
+            JellystackLog.e(
+                "Failed to search Jellyseerr for ${environment.serverId} at ${environment.baseUrl} with query '$query': ${error.message}",
+                error
+            )
+            throw error
+        }
 
     suspend fun createRequest(
         environment: JellyseerrEnvironment,
@@ -110,6 +136,10 @@ class JellyseerrRepository(
             val response = api(environment).createRequest(payload)
             JellyseerrCreateResult.Success(response.toDomain())
         } catch (error: JellyseerrHttpException) {
+            JellystackLog.e(
+                "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
+                error
+            )
             val message = parseErrorMessage(error.responseBody)
             if (error.status == HttpStatusCode.Conflict) {
                 JellyseerrCreateResult.Duplicate(message ?: "This item has already been requested.")
@@ -117,6 +147,10 @@ class JellyseerrRepository(
                 JellyseerrCreateResult.Failure(message ?: "Request failed.", error)
             }
         } catch (error: ClientRequestException) {
+            JellystackLog.e(
+                "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
+                error
+            )
             val message = extractErrorMessage(error)
             if (error.response.status == HttpStatusCode.Conflict) {
                 JellyseerrCreateResult.Duplicate(message ?: "This item has already been requested.")
@@ -124,9 +158,17 @@ class JellyseerrRepository(
                 JellyseerrCreateResult.Failure(message ?: "Request failed.", error)
             }
         } catch (error: ServerResponseException) {
+            JellystackLog.e(
+                "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
+                error
+            )
             val message = extractErrorMessage(error)
             JellyseerrCreateResult.Failure(message ?: "Request failed.", error)
         } catch (error: Throwable) {
+            JellystackLog.e(
+                "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
+                error
+            )
             JellyseerrCreateResult.Failure(error.message ?: "Request failed.", error)
         }
     }
@@ -137,6 +179,12 @@ class JellyseerrRepository(
     ): Result<Unit> {
         val apiInstance = api(environment)
         return runCatching { apiInstance.deleteRequest(requestId) }
+            .onFailure { error ->
+                JellystackLog.e(
+                    "Failed to delete Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
+                    error
+                )
+            }
     }
 
     suspend fun removeMediaFromService(
@@ -148,6 +196,11 @@ class JellyseerrRepository(
         return runCatching {
             apiInstance.deleteMediaFiles(mediaId, is4k)
             apiInstance.deleteMedia(mediaId)
+        }.onFailure { error ->
+            JellystackLog.e(
+                "Failed to remove Jellyseerr media $mediaId for ${environment.serverId}: ${error.message}",
+                error
+            )
         }
     }
 
@@ -157,6 +210,12 @@ class JellyseerrRepository(
     ): Result<JellyseerrRequestSummary> {
         val apiInstance = api(environment)
         return runCatching { apiInstance.retryRequest(requestId).toDomain() }
+            .onFailure { error ->
+                JellystackLog.e(
+                    "Failed to retry Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
+                    error
+                )
+            }
     }
 
     suspend fun updateRequestStatus(
@@ -166,9 +225,24 @@ class JellyseerrRepository(
     ): Result<JellyseerrRequestSummary> {
         val apiInstance = api(environment)
         return runCatching { apiInstance.updateRequestStatus(requestId, status).toDomain() }
+            .onFailure { error ->
+                JellystackLog.e(
+                    "Failed to update Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
+                    error
+                )
+            }
     }
 
-    suspend fun profile(environment: JellyseerrEnvironment): JellyseerrProfile = api(environment).getProfile().toDomain()
+    suspend fun profile(environment: JellyseerrEnvironment): JellyseerrProfile =
+        try {
+            api(environment).getProfile().toDomain()
+        } catch (error: Throwable) {
+            JellystackLog.e(
+                "Failed to load Jellyseerr profile for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
+                error
+            )
+            throw error
+        }
 
     private suspend fun extractErrorMessage(error: ClientRequestException): String? =
         runCatching {
