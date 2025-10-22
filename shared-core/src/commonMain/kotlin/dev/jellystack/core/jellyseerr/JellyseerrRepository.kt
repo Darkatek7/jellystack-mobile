@@ -71,18 +71,17 @@ class JellyseerrRepository(
         filter: JellyseerrRequestFilter,
         take: Int = DEFAULT_PAGE_SIZE,
         skip: Int = 0,
-    ): JellyseerrRequestsPage {
-        return try {
+    ): JellyseerrRequestsPage =
+        try {
             val response = api(environment).listRequests(take = take, skip = skip, filter = filter.queryValue)
             response.toDomain()
         } catch (error: Throwable) {
             JellystackLog.e(
                 "Failed to fetch Jellyseerr requests for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
-                error
+                error,
             )
             throw error
         }
-    }
 
     suspend fun fetchCounts(environment: JellyseerrEnvironment): JellyseerrRequestCounts =
         try {
@@ -90,7 +89,7 @@ class JellyseerrRepository(
         } catch (error: Throwable) {
             JellystackLog.e(
                 "Failed to fetch Jellyseerr counts for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
-                error
+                error,
             )
             throw error
         }
@@ -107,7 +106,7 @@ class JellyseerrRepository(
         } catch (error: Throwable) {
             JellystackLog.e(
                 "Failed to search Jellyseerr for ${environment.serverId} at ${environment.baseUrl} with query '$query': ${error.message}",
-                error
+                error,
             )
             throw error
         }
@@ -138,7 +137,7 @@ class JellyseerrRepository(
         } catch (error: JellyseerrHttpException) {
             JellystackLog.e(
                 "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
-                error
+                error,
             )
             val message = parseErrorMessage(error.responseBody)
             if (error.status == HttpStatusCode.Conflict) {
@@ -149,7 +148,7 @@ class JellyseerrRepository(
         } catch (error: ClientRequestException) {
             JellystackLog.e(
                 "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
-                error
+                error,
             )
             val message = extractErrorMessage(error)
             if (error.response.status == HttpStatusCode.Conflict) {
@@ -160,14 +159,14 @@ class JellyseerrRepository(
         } catch (error: ServerResponseException) {
             JellystackLog.e(
                 "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
-                error
+                error,
             )
             val message = extractErrorMessage(error)
             JellyseerrCreateResult.Failure(message ?: "Request failed.", error)
         } catch (error: Throwable) {
             JellystackLog.e(
                 "Jellyseerr create request failed for ${environment.serverId}: ${error.message}",
-                error
+                error,
             )
             JellyseerrCreateResult.Failure(error.message ?: "Request failed.", error)
         }
@@ -182,7 +181,7 @@ class JellyseerrRepository(
             .onFailure { error ->
                 JellystackLog.e(
                     "Failed to delete Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
-                    error
+                    error,
                 )
             }
     }
@@ -199,7 +198,7 @@ class JellyseerrRepository(
         }.onFailure { error ->
             JellystackLog.e(
                 "Failed to remove Jellyseerr media $mediaId for ${environment.serverId}: ${error.message}",
-                error
+                error,
             )
         }
     }
@@ -213,7 +212,7 @@ class JellyseerrRepository(
             .onFailure { error ->
                 JellystackLog.e(
                     "Failed to retry Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
-                    error
+                    error,
                 )
             }
     }
@@ -228,7 +227,7 @@ class JellyseerrRepository(
             .onFailure { error ->
                 JellystackLog.e(
                     "Failed to update Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
-                    error
+                    error,
                 )
             }
     }
@@ -239,7 +238,7 @@ class JellyseerrRepository(
         } catch (error: Throwable) {
             JellystackLog.e(
                 "Failed to load Jellyseerr profile for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
-                error
+                error,
             )
             throw error
         }
@@ -304,12 +303,25 @@ class JellyseerrRepository(
                 standard = JellyseerrMediaStatus.from(effectiveMedia?.status),
                 `4k` = JellyseerrMediaStatus.from(effectiveMedia?.status4k),
             )
+        val resolvedTitle =
+            listOf(
+                effectiveMedia?.title,
+                effectiveMedia?.name,
+                effectiveMedia?.originalTitle,
+                effectiveMedia?.originalName,
+            ).firstOrNull { !it.isNullOrBlank() }
+        val resolvedOriginalTitle =
+            listOf(
+                effectiveMedia?.originalTitle,
+                effectiveMedia?.originalName,
+            ).firstOrNull { !it.isNullOrBlank() }
         return JellyseerrRequestSummary(
             id = id,
             mediaId = effectiveMedia?.id ?: mediaId,
             tmdbId = effectiveMedia?.tmdbId,
             tvdbId = effectiveMedia?.tvdbId,
-            title = effectiveMedia?.title,
+            title = resolvedTitle,
+            originalTitle = resolvedOriginalTitle,
             mediaType = JellyseerrMediaType.from(type),
             requestStatus = JellyseerrRequestStatus.from(status),
             availability = availability,
@@ -320,6 +332,8 @@ class JellyseerrRepository(
             requestedBy = requestedBy?.toDomain(),
             profileName = profileName,
             seasons = seasons.mapNotNull { it.toDomain() },
+            posterPath = effectiveMedia?.posterPath,
+            backdropPath = effectiveMedia?.backdropPath,
         )
     }
 

@@ -46,8 +46,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessageKind
@@ -56,6 +63,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRequestStatus
 import dev.jellystack.core.jellyseerr.JellyseerrRequestSummary
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsState
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.tmdb.tmdbPosterUrl
 
 @Composable
 fun JellyseerrRequestsScreen(
@@ -312,61 +320,82 @@ private fun SearchResultCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            val posterPlaceholder =
+                remember(item.title) {
+                    item.title
+                        .firstOrNull { it.isLetterOrDigit() }
+                        ?.uppercaseChar()
+                        ?.toString()
+                }
+            PosterArtwork(
+                posterPath = item.posterPath,
+                contentDescription = item.title,
+                placeholderText = posterPlaceholder,
+                modifier =
+                    Modifier
+                        .width(96.dp)
+                        .height(144.dp),
             )
-            Text(
-                text =
-                    buildString {
-                        append(item.mediaType.displayName())
-                        item.releaseYear?.let {
-                            append(" • ")
-                            append(it)
-                        }
-                    },
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            val overviewText = item.overview
-            if (!overviewText.isNullOrBlank()) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(
-                    text = overviewText,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 3,
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            if (item.requests.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item.requests.forEach { request ->
-                        AssistChip(
-                            onClick = {},
-                            label = { Text(request.requestStatus.label()) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.Warning,
-                                    contentDescription = null,
-                                )
-                            },
-                        )
-                    }
+                Text(
+                    text =
+                        buildString {
+                            append(item.mediaType.displayName())
+                            item.releaseYear?.let {
+                                append(" • ")
+                                append(it)
+                            }
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                val overviewText = item.overview
+                if (!overviewText.isNullOrBlank()) {
+                    Text(
+                        text = overviewText,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { onCreateRequest(item, false) }) {
-                        Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Request")
+                if (item.requests.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item.requests.forEach { request ->
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(request.requestStatus.label()) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Warning,
+                                        contentDescription = null,
+                                    )
+                                },
+                            )
+                        }
                     }
-                    if (item.mediaType == JellyseerrMediaType.MOVIE) {
-                        OutlinedButton(onClick = { onCreateRequest(item, true) }) {
-                            Text("Request 4K")
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = { onCreateRequest(item, false) }) {
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Request")
+                        }
+                        if (item.mediaType == JellyseerrMediaType.MOVIE) {
+                            OutlinedButton(onClick = { onCreateRequest(item, true) }) {
+                                Text("Request 4K")
+                            }
                         }
                     }
                 }
@@ -383,71 +412,139 @@ private fun RequestCard(
     onRemoveMedia: (JellyseerrRequestSummary) -> Unit,
 ) {
     Card {
-        Column(
+        Row(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f, fill = false)) {
-                    Text(
-                        text = summary.title ?: "Unknown title",
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = summary.mediaType.displayName(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            val resolvedTitle =
+                remember(summary.title, summary.originalTitle, summary.profileName, summary.mediaType) {
+                    summary.title?.takeUnless { it.isBlank() }
+                        ?: summary.originalTitle?.takeUnless { it.isBlank() }
+                        ?: summary.profileName?.takeUnless { it.isBlank() }
+                        ?: summary.mediaType.displayName()
                 }
-                StatusBadge(status = summary.requestStatus)
-            }
-            if (summary.availability.standard != JellyseerrMediaStatus.UNKNOWN) {
-                AvailabilityBadge(summary)
-            }
-            summary.requestedBy?.displayName?.let { requester ->
-                Text(
-                    text = "Requested by $requester",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (summary.seasons.isNotEmpty()) {
-                Text(
-                    text =
-                        "Seasons: ${
-                            summary.seasons.joinToString {
-                                "${it.seasonNumber} (${it.status.label()})"
-                            }
-                        }",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
+            val posterPlaceholder =
+                remember(resolvedTitle) {
+                    resolvedTitle.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString()
+                }
+            PosterArtwork(
+                posterPath = summary.posterPath,
+                contentDescription = resolvedTitle,
+                placeholderText = posterPlaceholder,
+                modifier =
+                    Modifier
+                        .width(96.dp)
+                        .height(144.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedButton(
-                    onClick = { onDelete(summary) },
-                    modifier = Modifier.weight(1f),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete")
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text(
+                            text = resolvedTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = summary.mediaType.displayName(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    StatusBadge(status = summary.requestStatus)
                 }
-                if (isAdmin && summary.canRemoveFromService) {
-                    Button(
-                        onClick = { onRemoveMedia(summary) },
+                if (summary.availability.standard != JellyseerrMediaStatus.UNKNOWN) {
+                    AvailabilityBadge(summary)
+                }
+                summary.requestedBy?.displayName?.let { requester ->
+                    Text(
+                        text = "Requested by $requester",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (summary.seasons.isNotEmpty()) {
+                    Text(
+                        text =
+                            "Seasons: ${
+                                summary.seasons.joinToString {
+                                    "${it.seasonNumber} (${it.status.label()})"
+                                }
+                            }",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedButton(
+                        onClick = { onDelete(summary) },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("Remove media")
+                        Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Delete")
+                    }
+                    if (isAdmin && summary.canRemoveFromService) {
+                        Button(
+                            onClick = { onRemoveMedia(summary) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Remove media")
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PosterArtwork(
+    posterPath: String?,
+    contentDescription: String,
+    placeholderText: String?,
+    modifier: Modifier = Modifier,
+) {
+    val shape = MaterialTheme.shapes.medium
+    val backgroundColor = MaterialTheme.colorScheme.surfaceVariant
+    val placeholderPainter = remember(backgroundColor) { ColorPainter(backgroundColor) }
+    val context = LocalPlatformContext.current
+    val imageUrl = remember(posterPath) { tmdbPosterUrl(posterPath) }
+    Box(
+        modifier =
+            modifier
+                .clip(shape)
+                .background(backgroundColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (imageUrl != null) {
+            AsyncImage(
+                modifier = Modifier.fillMaxSize(),
+                model =
+                    ImageRequest
+                        .Builder(context)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .build(),
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                placeholder = placeholderPainter,
+                error = placeholderPainter,
+            )
+        } else if (!placeholderText.isNullOrBlank()) {
+            Text(
+                text = placeholderText,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
