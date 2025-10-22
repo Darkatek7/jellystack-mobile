@@ -1,5 +1,7 @@
 package dev.jellystack.app
 
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -16,18 +18,30 @@ class MainActivityTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun homeScreenShowsThemeAndPlaybackState() {
-        composeRule.onNodeWithText("Jellystack running on Android").assertExists()
-        composeRule.onNodeWithText("Current theme: Light").assertExists()
-        composeRule.onNodeWithText("Playback state: Stopped").assertExists()
+    fun homeScreenShowsNavigationTabs() {
+        composeRule.onNodeWithText("Home").assertExists()
+        composeRule.onNodeWithText("Library").assertExists()
+        composeRule.onNodeWithText("Media").assertExists()
     }
 
     @Test
     fun themeTogglePropagatesAcrossScreens() {
-        composeRule.onNodeWithText("Open theme settings").performClick()
+        composeRule.onNodeWithContentDescription("Open settings").performClick()
         composeRule.onNodeWithTag("theme_switch").performClick()
         composeRule.onNodeWithText("Dark mode enabled").assertExists()
-        composeRule.onNodeWithContentDescription("Navigate back").performClick()
-        composeRule.onNodeWithText("Current theme: Dark").assertExists()
+        composeRule.onNodeWithContentDescription("Close settings").performClick()
+        composeRule.onNodeWithContentDescription("Open settings").performClick()
+        composeRule.onNodeWithText("Dark mode enabled").assertExists()
+        composeRule.onNodeWithContentDescription("Close settings").performClick()
+    }
+
+    @Test
+    fun requestsSectionShowsLinkingControls() {
+        composeRule.onNodeWithContentDescription("Open settings").performClick()
+        composeRule.onNodeWithText("Requests").assertExists()
+        composeRule.onNodeWithText("Connect a Jellyfin server").assertExists().assertIsEnabled()
+        composeRule.onNodeWithText("Connect a requests server").assertExists().assertIsNotEnabled()
+        composeRule.onNodeWithText("Add a Jellyfin server first to link requests.").assertExists()
+        composeRule.onNodeWithContentDescription("Close settings").performClick()
     }
 }
