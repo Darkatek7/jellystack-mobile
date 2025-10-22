@@ -7,6 +7,7 @@ import dev.jellystack.network.NetworkJson
 import dev.jellystack.network.jellyseerr.JellyseerrApi
 import dev.jellystack.network.jellyseerr.JellyseerrCreateRequestPayload
 import dev.jellystack.network.jellyseerr.JellyseerrHttpException
+import dev.jellystack.network.jellyseerr.JellyseerrLanguageProfileDto
 import dev.jellystack.network.jellyseerr.JellyseerrMediaInfoDto
 import dev.jellystack.network.jellyseerr.JellyseerrProfileDto
 import dev.jellystack.network.jellyseerr.JellyseerrRequestCountsDto
@@ -15,6 +16,8 @@ import dev.jellystack.network.jellyseerr.JellyseerrRequestsResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResponseDto
 import dev.jellystack.network.jellyseerr.JellyseerrSearchResultDto
 import dev.jellystack.network.jellyseerr.JellyseerrSeasonDto
+import dev.jellystack.network.jellyseerr.JellyseerrServiceDetailsDto
+import dev.jellystack.network.jellyseerr.JellyseerrServiceSummaryDto
 import dev.jellystack.network.jellyseerr.JellyseerrUserDto
 import dev.jellystack.network.jellyseerr.seasonsAll
 import dev.jellystack.network.jellyseerr.seasonsList
@@ -130,6 +133,9 @@ class JellyseerrRepository(
                     request.is4k.takeIf {
                         request.mediaType == JellyseerrMediaType.MOVIE || request.mediaType == JellyseerrMediaType.TV
                     },
+                serverId = request.serverId,
+                profileId = request.profileId,
+                languageProfileId = request.languageProfileId,
             )
         return try {
             val response = api(environment).createRequest(payload)
@@ -242,6 +248,54 @@ class JellyseerrRepository(
             )
             throw error
         }
+
+    suspend fun fetchLanguageProfiles(environment: JellyseerrEnvironment): JellyseerrLanguageProfiles {
+        val apiInstance = api(environment)
+        val radarrSummaries =
+            runCatching { apiInstance.listRadarrServices() }
+                .onFailure { error ->
+                    JellystackLog.e(
+                        "Failed to load Radarr services for ${environment.serverId}: ${error.message}",
+                        error,
+                    )
+                }.getOrDefault(emptyList())
+        val radarrProfiles =
+            radarrSummaries.flatMap { summary ->
+                val details =
+                    runCatching { apiInstance.getRadarrServiceDetails(summary.id) }
+                        .onFailure { error ->
+                            JellystackLog.e(
+                                "Failed to load Radarr service details ${summary.id} for ${environment.serverId}: ${error.message}",
+                                error,
+                            )
+                        }.getOrNull()
+                summary.toDomainLanguageProfiles(details)
+            }
+        val sonarrSummaries =
+            runCatching { apiInstance.listSonarrServices() }
+                .onFailure { error ->
+                    JellystackLog.e(
+                        "Failed to load Sonarr services for ${environment.serverId}: ${error.message}",
+                        error,
+                    )
+                }.getOrDefault(emptyList())
+        val sonarrProfiles =
+            sonarrSummaries.flatMap { summary ->
+                val details =
+                    runCatching { apiInstance.getSonarrServiceDetails(summary.id) }
+                        .onFailure { error ->
+                            JellystackLog.e(
+                                "Failed to load Sonarr service details ${summary.id} for ${environment.serverId}: ${error.message}",
+                                error,
+                            )
+                        }.getOrNull()
+                summary.toDomainLanguageProfiles(details)
+            }
+        return JellyseerrLanguageProfiles(
+            movies = radarrProfiles,
+            tv = sonarrProfiles,
+        )
+    }
 
     private suspend fun extractErrorMessage(error: ClientRequestException): String? =
         runCatching {
@@ -407,6 +461,50 @@ class JellyseerrRepository(
             id = id,
             displayName = displayName ?: username,
             permissions = permissions,
+        )
+
+    private fun JellyseerrServiceSummaryDto.toDomainLanguageProfiles(
+        details: JellyseerrServiceDetailsDto?,
+    ): List<JellyseerrLanguageProfileOption> {
+        val server = details?.server ?: this
+        val resolvedName = server.name?.takeIf { it.isNotBlank() } ?: "Server ${server.id}"
+        val fallbackProfileId = details?.server?.activeProfileId ?: activeProfileId
+        val languageProfiles = details?.languageProfiles
+        if (!languageProfiles.isNullOrEmpty()) {
+            return languageProfiles.map { profile ->
+                profile.toDomain(
+                    server = server,
+                    resolvedName = resolvedName,
+                    fallbackProfileId = fallbackProfileId,
+                )
+            }
+        }
+        return listOf(
+            JellyseerrLanguageProfileOption(
+                languageProfileId = null,
+                name = resolvedName,
+                serviceId = server.id,
+                serviceName = server.name,
+                is4k = server.is4k ?: false,
+                isDefault = server.isDefault ?: false,
+                profileId = fallbackProfileId,
+            ),
+        )
+    }
+
+    private fun JellyseerrLanguageProfileDto.toDomain(
+        server: JellyseerrServiceSummaryDto,
+        resolvedName: String,
+        fallbackProfileId: Int?,
+    ): JellyseerrLanguageProfileOption =
+        JellyseerrLanguageProfileOption(
+            languageProfileId = id,
+            name = name.takeIf { it.isNotBlank() } ?: resolvedName,
+            serviceId = server.id,
+            serviceName = server.name,
+            is4k = server.is4k ?: false,
+            isDefault = server.isDefault ?: false,
+            profileId = profileId ?: fallbackProfileId,
         )
 
     private fun JellyseerrMediaType.toWireValue(): String =

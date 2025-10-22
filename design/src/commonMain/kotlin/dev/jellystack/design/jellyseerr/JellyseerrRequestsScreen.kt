@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -30,6 +31,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,7 +46,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +61,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import dev.jellystack.core.jellyseerr.JellyseerrLanguageProfileOption
 import dev.jellystack.core.jellyseerr.JellyseerrMediaStatus
 import dev.jellystack.core.jellyseerr.JellyseerrMediaType
 import dev.jellystack.core.jellyseerr.JellyseerrMessageKind
@@ -72,7 +79,7 @@ fun JellyseerrRequestsScreen(
     onClearSearch: () -> Unit,
     onSelectFilter: (JellyseerrRequestFilter) -> Unit,
     onRefresh: () -> Unit,
-    onCreateRequest: (JellyseerrSearchItem, Boolean) -> Unit,
+    onCreateRequest: (JellyseerrSearchItem, JellyseerrLanguageProfileOption?) -> Unit,
     onDeleteRequest: (JellyseerrRequestSummary) -> Unit,
     onRemoveMedia: (JellyseerrRequestSummary) -> Unit,
     onMessageAcknowledged: () -> Unit,
@@ -155,7 +162,7 @@ private fun RequestsContent(
     onClearSearch: () -> Unit,
     onSelectFilter: (JellyseerrRequestFilter) -> Unit,
     onRefresh: () -> Unit,
-    onCreateRequest: (JellyseerrSearchItem, Boolean) -> Unit,
+    onCreateRequest: (JellyseerrSearchItem, JellyseerrLanguageProfileOption?) -> Unit,
     onDeleteRequest: (JellyseerrRequestSummary) -> Unit,
     onRemoveMedia: (JellyseerrRequestSummary) -> Unit,
     modifier: Modifier = Modifier,
@@ -187,8 +194,15 @@ private fun RequestsContent(
                 )
             }
             items(state.searchResults, key = { it.tmdbId }) { result ->
+                val availableProfiles =
+                    when (result.mediaType) {
+                        JellyseerrMediaType.MOVIE -> state.languageProfiles.movies
+                        JellyseerrMediaType.TV -> state.languageProfiles.tv
+                        else -> emptyList()
+                    }
                 SearchResultCard(
                     item = result,
+                    languageProfiles = availableProfiles,
                     onCreateRequest = onCreateRequest,
                 )
             }
@@ -315,7 +329,8 @@ private fun FilterRow(
 @Composable
 private fun SearchResultCard(
     item: JellyseerrSearchItem,
-    onCreateRequest: (JellyseerrSearchItem, Boolean) -> Unit,
+    languageProfiles: List<JellyseerrLanguageProfileOption>,
+    onCreateRequest: (JellyseerrSearchItem, JellyseerrLanguageProfileOption?) -> Unit,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -386,22 +401,68 @@ private fun SearchResultCard(
                         }
                     }
                 } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = { onCreateRequest(item, false) }) {
+                    val hasProfiles = languageProfiles.isNotEmpty()
+                    var isMenuOpen by remember(item.tmdbId) { mutableStateOf(false) }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Button(
+                            onClick = { isMenuOpen = true },
+                            enabled = hasProfiles,
+                        ) {
                             Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Request")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = null)
                         }
-                        if (item.mediaType == JellyseerrMediaType.MOVIE) {
-                            OutlinedButton(onClick = { onCreateRequest(item, true) }) {
-                                Text("Request 4K")
+                        DropdownMenu(
+                            expanded = isMenuOpen,
+                            onDismissRequest = { isMenuOpen = false },
+                        ) {
+                            languageProfiles.forEach { profile ->
+                                DropdownMenuItem(
+                                    text = { Text(profile.displayLabel()) },
+                                    onClick = {
+                                        isMenuOpen = false
+                                        onCreateRequest(item, profile)
+                                    },
+                                )
                             }
+                        }
+                        if (!hasProfiles) {
+                            Text(
+                                text = "No language profiles available.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+private fun JellyseerrLanguageProfileOption.displayLabel(): String {
+    val parts = mutableListOf<String>()
+    val service = serviceName?.takeIf { it.isNotBlank() }
+    val profileName = name.takeIf { it.isNotBlank() }
+    if (service != null) {
+        parts += service
+    }
+    if (profileName != null && profileName != service) {
+        parts += profileName
+    } else if (service == null && profileName != null) {
+        parts += profileName
+    }
+    if (is4k) {
+        parts += "4K"
+    }
+    if (isDefault) {
+        parts += "Default"
+    }
+    if (parts.isEmpty()) {
+        languageProfileId?.let { parts += "Profile $it" }
+    }
+    return parts.filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "Request" }
 }
 
 @Composable
