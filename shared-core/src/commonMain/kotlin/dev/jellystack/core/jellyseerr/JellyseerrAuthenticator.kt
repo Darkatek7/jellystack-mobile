@@ -3,6 +3,7 @@ package dev.jellystack.core.jellyseerr
 import dev.jellystack.network.ClientConfig
 import dev.jellystack.network.NetworkClientFactory
 import dev.jellystack.network.jellyseerr.JellyseerrApi
+import dev.jellystack.network.jellyseerr.JellyseerrJellyfinLoginPayload
 import dev.jellystack.network.jellyseerr.JellyseerrLocalLoginPayload
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.cookies.HttpCookies
@@ -35,12 +36,36 @@ open class JellyseerrAuthenticator {
                 client = client,
             )
         val user =
-            api.loginWithCredentials(
-                JellyseerrLocalLoginPayload(
-                    email = request.email,
-                    password = request.password,
-                ),
-            )
+            when (request.method) {
+                JellyseerrAuthRequest.Method.LOCAL -> {
+                    val email =
+                        request.email?.takeIf { it.isNotBlank() }
+                            ?: throw JellyseerrAuthenticationException(
+                                message = "Email is required for Jellyseerr account login.",
+                                reason = JellyseerrAuthenticationException.Reason.MISSING_EMAIL,
+                            )
+                    api.loginWithCredentials(
+                        JellyseerrLocalLoginPayload(
+                            email = email,
+                            password = request.password,
+                        ),
+                    )
+                }
+                JellyseerrAuthRequest.Method.JELLYFIN -> {
+                    val username =
+                        request.username?.takeIf { it.isNotBlank() }
+                            ?: throw JellyseerrAuthenticationException(
+                                message = "Username is required for Jellyfin login.",
+                                reason = JellyseerrAuthenticationException.Reason.MISSING_JELLYFIN_USERNAME,
+                            )
+                    api.loginWithJellyfin(
+                        JellyseerrJellyfinLoginPayload(
+                            username = username,
+                            password = request.password,
+                        ),
+                    )
+                }
+            }
         val cookies = client.cookies(request.baseUrl)
         val cookieHeader =
             cookies
@@ -62,9 +87,16 @@ open class JellyseerrAuthenticator {
 
 data class JellyseerrAuthRequest(
     val baseUrl: String,
-    val email: String,
+    val method: Method,
+    val email: String? = null,
+    val username: String? = null,
     val password: String,
-)
+) {
+    enum class Method {
+        LOCAL,
+        JELLYFIN,
+    }
+}
 
 data class JellyseerrAuthenticationResult(
     val apiKey: String?,
@@ -82,6 +114,8 @@ class JellyseerrAuthenticationException(
         SERVER_NOT_FOUND,
         INVALID_LINKED_SERVER,
         MISSING_JELLYFIN_PASSWORD,
+        MISSING_EMAIL,
+        MISSING_JELLYFIN_USERNAME,
     }
 }
 

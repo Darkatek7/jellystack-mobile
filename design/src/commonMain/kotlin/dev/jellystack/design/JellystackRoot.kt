@@ -182,6 +182,7 @@ internal data class ServerFormState(
     val username: String = "",
     val email: String = "",
     val password: String = "",
+    val useJellyfinLogin: Boolean = false,
 ) {
     val isValid: Boolean
         get() =
@@ -189,7 +190,12 @@ internal data class ServerFormState(
                 ServerFormType.JELLYFIN ->
                     name.isNotBlank() && baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
                 ServerFormType.JELLYSEERR ->
-                    baseUrl.isNotBlank() && email.isNotBlank() && password.isNotBlank()
+                    baseUrl.isNotBlank() &&
+                        password.isNotBlank() &&
+                        (
+                            (!useJellyfinLogin && email.isNotBlank()) ||
+                                (useJellyfinLogin && username.isNotBlank())
+                        )
             }
 }
 
@@ -628,6 +634,7 @@ fun JellystackRoot(
                     ServerFormState(
                         type = ServerFormType.JELLYSEERR,
                         name = "Jellyseerr",
+                        useJellyfinLogin = false,
                     )
                 }
             }
@@ -748,13 +755,25 @@ fun JellystackRoot(
                         }
                     JellystackLog.d("Attempting Jellyseerr login at $normalizedUrl using ${form.email}")
                     try {
-                        val authResult =
-                            jellyseerrAuthenticator.authenticate(
+                        val authRequest =
+                            if (form.useJellyfinLogin) {
                                 JellyseerrAuthRequest(
                                     baseUrl = normalizedUrl,
+                                    method = JellyseerrAuthRequest.Method.JELLYFIN,
+                                    username = form.username,
+                                    password = form.password,
+                                )
+                            } else {
+                                JellyseerrAuthRequest(
+                                    baseUrl = normalizedUrl,
+                                    method = JellyseerrAuthRequest.Method.LOCAL,
                                     email = form.email,
                                     password = form.password,
-                                ),
+                                )
+                            }
+                        val authResult =
+                            jellyseerrAuthenticator.authenticate(
+                                authRequest,
                             )
                         val registered =
                             serverRepository.register(
@@ -1770,6 +1789,7 @@ private fun AddServerDialog(
                                         type = ServerFormType.JELLYFIN,
                                         email = "",
                                         password = "",
+                                        useJellyfinLogin = false,
                                     ),
                                 )
                                 onClearError()
@@ -1788,6 +1808,7 @@ private fun AddServerDialog(
                                         type = ServerFormType.JELLYSEERR,
                                         username = "",
                                         password = "",
+                                        useJellyfinLogin = false,
                                     ),
                                 )
                                 onClearError()
@@ -1857,17 +1878,66 @@ private fun AddServerDialog(
                         )
                     }
                     ServerFormType.JELLYSEERR -> {
-                        OutlinedTextField(
-                            value = state.email,
-                            onValueChange = {
-                                onValueChange(state.copy(email = it))
-                                onClearError()
-                            },
-                            label = { Text("Email") },
-                            singleLine = true,
-                            enabled = !isSaving,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Email),
-                        )
+                        Text("Sign in with", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = !state.useJellyfinLogin,
+                                onClick = {
+                                    if (!isSaving) {
+                                        onValueChange(
+                                            state.copy(
+                                                useJellyfinLogin = false,
+                                                username = "",
+                                            ),
+                                        )
+                                        onClearError()
+                                    }
+                                },
+                                enabled = !isSaving,
+                                label = { Text("Jellyseerr account") },
+                            )
+                            FilterChip(
+                                selected = state.useJellyfinLogin,
+                                onClick = {
+                                    if (!isSaving) {
+                                        onValueChange(
+                                            state.copy(
+                                                useJellyfinLogin = true,
+                                                email = "",
+                                            ),
+                                        )
+                                        onClearError()
+                                    }
+                                },
+                                enabled = !isSaving,
+                                label = { Text("Jellyfin account") },
+                            )
+                        }
+                        if (state.useJellyfinLogin) {
+                            OutlinedTextField(
+                                value = state.username,
+                                onValueChange = {
+                                    onValueChange(state.copy(username = it))
+                                    onClearError()
+                                },
+                                label = { Text("Username") },
+                                singleLine = true,
+                                enabled = !isSaving,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            )
+                        } else {
+                            OutlinedTextField(
+                                value = state.email,
+                                onValueChange = {
+                                    onValueChange(state.copy(email = it))
+                                    onClearError()
+                                },
+                                label = { Text("Email") },
+                                singleLine = true,
+                                enabled = !isSaving,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, keyboardType = KeyboardType.Email),
+                            )
+                        }
                         OutlinedTextField(
                             value = state.password,
                             onValueChange = {

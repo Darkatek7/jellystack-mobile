@@ -147,6 +147,13 @@ class JellyseerrApi internal constructor(
                 setBody(payload)
             }.body()
 
+    suspend fun loginWithJellyfin(payload: JellyseerrJellyfinLoginPayload): JellyseerrUserDto =
+        client
+            .post("$apiBaseUrl/auth/jellyfin") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }.body()
+
     suspend fun deleteRequest(requestId: Int) {
         withSessionRetry {
             val cookie = prepareSessionCookie()
@@ -413,5 +420,11 @@ fun seasonsList(numbers: List<Int>): JsonElement = JsonArray(numbers.map { JsonP
 @Serializable
 data class JellyseerrLocalLoginPayload(
     val email: String,
+    val password: String,
+)
+
+@Serializable
+data class JellyseerrJellyfinLoginPayload(
+    val username: String,
     val password: String,
 )
