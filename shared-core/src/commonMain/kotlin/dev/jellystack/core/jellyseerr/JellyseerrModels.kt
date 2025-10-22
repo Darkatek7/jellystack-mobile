@@ -104,6 +104,7 @@ data class JellyseerrRequestSummary(
     val tmdbId: Int?,
     val tvdbId: Int?,
     val title: String?,
+    val originalTitle: String?,
     val mediaType: JellyseerrMediaType,
     val requestStatus: JellyseerrRequestStatus,
     val availability: JellyseerrMediaAvailability,
@@ -114,6 +115,8 @@ data class JellyseerrRequestSummary(
     val requestedBy: JellyseerrUser?,
     val profileName: String?,
     val seasons: List<JellyseerrSeasonStatus>,
+    val posterPath: String?,
+    val backdropPath: String?,
 )
 
 data class JellyseerrRequestCounts(

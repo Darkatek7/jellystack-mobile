@@ -104,7 +104,7 @@ class JellyseerrRequestsCoordinator(
                 }.onFailure { error ->
                     JellystackLog.e(
                         "Jellyseerr search failed for ${environment.serverId} with query '$trimmed': ${error.message}",
-                        error
+                        error,
                     )
                     mutex.withLock {
                         lastSearchResults = emptyList()
@@ -229,7 +229,7 @@ class JellyseerrRequestsCoordinator(
                 }.onFailure { error ->
                     JellystackLog.e(
                         "Failed to delete Jellyseerr request $requestId for ${environment.serverId}: ${error.message}",
-                        error
+                        error,
                     )
                     mutex.withLock {
                         updateReadyState {
@@ -286,7 +286,7 @@ class JellyseerrRequestsCoordinator(
                 }.onFailure { error ->
                     JellystackLog.e(
                         "Failed to remove Jellyseerr media ${summary.mediaId} for ${environment.serverId}: ${error.message}",
-                        error
+                        error,
                     )
                     mutex.withLock {
                         updateReadyState {
@@ -333,7 +333,7 @@ class JellyseerrRequestsCoordinator(
             return
         }
         JellystackLog.d(
-            "Loading Jellyseerr environment ${environment.serverId} at ${environment.baseUrl}"
+            "Loading Jellyseerr environment ${environment.serverId} at ${environment.baseUrl}",
         )
         val loadResult =
             runCatching {
@@ -345,7 +345,7 @@ class JellyseerrRequestsCoordinator(
         loadResult
             .onSuccess { (profile, page, counts) ->
                 JellystackLog.d(
-                    "Loaded Jellyseerr environment ${environment.serverId} with ${page.results.size} requests"
+                    "Loaded Jellyseerr environment ${environment.serverId} with ${page.results.size} requests",
                 )
                 mutex.withLock {
                     currentProfile = profile
@@ -371,7 +371,7 @@ class JellyseerrRequestsCoordinator(
             }.onFailure { error ->
                 JellystackLog.e(
                     "Failed to load Jellyseerr environment ${environment.serverId}: ${error.message}",
-                    error
+                    error,
                 )
                 mutex.withLock {
                     _state.value =
@@ -414,7 +414,7 @@ class JellyseerrRequestsCoordinator(
                 }.onFailure { error ->
                     JellystackLog.e(
                         "Failed to refresh Jellyseerr requests for ${environment.serverId}: ${error.message}",
-                        error
+                        error,
                     )
                     updateReadyState {
                         it.copy(
