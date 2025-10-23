@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +62,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -85,6 +85,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -183,8 +184,11 @@ fun JellyfinBrowseScreen(
         }
 
     if (showLibraryItems) {
-        var searchQuery by rememberSaveable(state.selectedLibraryId) { mutableStateOf("") }
-        val trimmedQuery = remember(searchQuery) { searchQuery.trim() }
+        var searchQuery by
+            rememberSaveable(state.selectedLibraryId, stateSaver = TextFieldValue.Saver) {
+                mutableStateOf(TextFieldValue(""))
+            }
+        val trimmedQuery = remember(searchQuery.text) { searchQuery.text.trim() }
         val filteredTvPosterEntries =
             remember(tvPosterEntries, trimmedQuery) {
                 if (trimmedQuery.isEmpty()) {
@@ -241,7 +245,7 @@ fun JellyfinBrowseScreen(
                     LibrarySearchField(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
-                        onClear = { searchQuery = "" },
+                        onClear = { searchQuery = TextFieldValue("") },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -498,6 +502,7 @@ fun JellyfinBrowseScreen(
                             onOpenSeries = { series ->
                                 onOpenDetail(series)
                             },
+                            onOpenEpisode = onOpenDetail,
                         )
                     }
                 } else {
@@ -636,8 +641,8 @@ private fun LibraryCategoryTabs(
 
 @Composable
 private fun LibrarySearchField(
-    query: String,
-    onQueryChange: (String) -> Unit,
+    query: TextFieldValue,
+    onQueryChange: (TextFieldValue) -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -648,7 +653,7 @@ private fun LibrarySearchField(
         modifier = modifier,
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon =
-            if (query.isNotEmpty()) {
+            if (query.text.isNotEmpty()) {
                 {
                     IconButton(
                         onClick = {
@@ -664,6 +669,13 @@ private fun LibrarySearchField(
             },
         placeholder = { Text("Search library") },
         singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        colors =
+            OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                disabledContainerColor = MaterialTheme.colorScheme.surface,
+            ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
     )
@@ -1154,13 +1166,14 @@ private fun RecentlyAddedMoviesSection(
             EmptySectionMessage("No movies available yet")
             return@Column
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(items, key = { it.id }) { item ->
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items.forEach { item ->
                 MoviePosterCard(
                     item = item,
                     baseUrl = baseUrl,
                     accessToken = accessToken,
                     onClick = { onOpenItem(item) },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -1175,52 +1188,91 @@ private fun MoviePosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier.width(148.dp),
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        PosterImage(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f),
-            baseUrl = baseUrl,
-            itemId = item.id,
-            primaryTag = item.primaryImageTag,
-            thumbTag = item.thumbImageTag,
-            backdropTag = item.backdropImageTag,
-            accessToken = accessToken,
-            contentDescription = item.name,
-        )
-        Column(
+    val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    val baseModifier = modifier.fillMaxWidth()
+    val content: @Composable () -> Unit = {
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Text(
-                text = item.name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 2,
-                minLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            PosterImage(
+                modifier =
+                    Modifier
+                        .width(96.dp)
+                        .height(144.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                baseUrl = baseUrl,
+                itemId = item.id,
+                primaryTag = item.primaryImageTag,
+                thumbTag = item.thumbImageTag,
+                backdropTag = item.backdropImageTag,
+                accessToken = accessToken,
+                contentDescription = item.name,
             )
-            val details =
-                listOfNotNull(
-                    item.productionYear?.toString(),
-                    item.officialRating,
-                ).joinToString(" • ")
-            val detailsText = details.takeIf { it.isNotBlank() } ?: " "
-            Text(
-                text = detailsText,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                minLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val progress = progressFraction(item)
+                if (progress > 0f) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LinearProgressIndicator(
+                            progress = progress,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = "${(progress * 100).roundToInt()}% watched",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                val detailParts =
+                    buildList {
+                        item.productionYear?.let { add(it.toString()) }
+                        item.officialRating?.let { add(it) }
+                        item.runTimeTicks?.let { ticks ->
+                            val minutes = ticksToMinutes(ticks)
+                            if (minutes > 0) add("${minutes}m")
+                        }
+                    }
+                if (detailParts.isNotEmpty()) {
+                    Text(
+                        text = detailParts.joinToString(" • "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item.overview
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { overview ->
+                        Text(
+                            text = overview,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+            }
         }
+    }
+    Card(
+        modifier = baseModifier,
+        onClick = onClick,
+        colors = cardColors,
+    ) {
+        content()
     }
 }
 
@@ -1439,6 +1491,7 @@ private fun TvSeriesCard(
     baseUrl: String?,
     accessToken: String?,
     onOpenSeries: (JellyfinItem) -> Unit,
+    onOpenEpisode: ((JellyfinItem) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val seasonGroups = remember(group) { buildSeasonEpisodes(group.episodes) }
@@ -1526,6 +1579,7 @@ private fun TvSeriesCard(
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
+                    onOpenEpisode = onOpenEpisode,
                 )
             }
         }
@@ -1858,6 +1912,7 @@ internal fun JellyfinDetailContent(
     onDownloadSeries: (() -> Unit)? = null,
     onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
     onViewSeries: (() -> Unit)? = null,
+    onOpenEpisode: ((JellyfinItem) -> Unit)? = null,
     audioTracks: List<AudioTrack> = emptyList(),
     selectedAudioTrack: AudioTrack? = null,
     onSelectAudioTrack: (AudioTrack) -> Unit = {},
@@ -1996,26 +2051,11 @@ internal fun JellyfinDetailContent(
                     text = "Audio tracks",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (isEpisode) {
-                    AudioTrackDropdown(
-                        tracks = audioTracks,
-                        selectedTrack = selectedAudioTrack ?: audioTracks.first(),
-                        onSelect = onSelectAudioTrack,
-                    )
-                } else {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        audioTracks.forEach { track ->
-                            FilterChip(
-                                selected = selectedAudioTrack?.id == track.id,
-                                onClick = { onSelectAudioTrack(track) },
-                                label = { Text(audioTrackLabel(track)) },
-                            )
-                        }
-                    }
-                }
+                AudioTrackDropdown(
+                    tracks = audioTracks,
+                    selectedTrack = selectedAudioTrack,
+                    onSelect = onSelectAudioTrack,
+                )
             }
         }
         if (subtitleTracks.isNotEmpty()) {
@@ -2024,31 +2064,11 @@ internal fun JellyfinDetailContent(
                     text = "Subtitles",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (isEpisode) {
-                    SubtitleTrackDropdown(
-                        tracks = subtitleTracks,
-                        selectedTrack = selectedSubtitleTrack,
-                        onSelect = onSelectSubtitleTrack,
-                    )
-                } else {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FilterChip(
-                            selected = selectedSubtitleTrack == null,
-                            onClick = { onSelectSubtitleTrack(null) },
-                            label = { Text("Off") },
-                        )
-                        subtitleTracks.forEach { track ->
-                            FilterChip(
-                                selected = selectedSubtitleTrack?.id == track.id,
-                                onClick = { onSelectSubtitleTrack(track) },
-                                label = { Text(subtitleTrackLabel(track)) },
-                            )
-                        }
-                    }
-                }
+                SubtitleTrackDropdown(
+                    tracks = subtitleTracks,
+                    selectedTrack = selectedSubtitleTrack,
+                    onSelect = onSelectSubtitleTrack,
+                )
             }
         }
         if (detail.taglines.isNotEmpty()) {
@@ -2078,6 +2098,7 @@ internal fun JellyfinDetailContent(
             accessToken = accessToken,
             modifier = Modifier.fillMaxWidth(),
             onDownloadSeason = onDownloadSeason,
+            onOpenEpisode = onOpenEpisode,
         )
         if (detail.mediaSources.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2165,6 +2186,7 @@ private fun SeasonEpisodeSelector(
     accessToken: String?,
     modifier: Modifier = Modifier,
     onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
+    onOpenEpisode: ((JellyfinItem) -> Unit)? = null,
 ) {
     if (seasons.isEmpty()) return
 
@@ -2243,6 +2265,7 @@ private fun SeasonEpisodeSelector(
                         episode = episode,
                         baseUrl = baseUrl,
                         accessToken = accessToken,
+                        onClick = onOpenEpisode?.let { open -> { open(episode) } },
                     )
                 }
             }
@@ -2388,11 +2411,10 @@ private fun EpisodeCard(
     baseUrl: String?,
     accessToken: String?,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    val content: @Composable () -> Unit = {
         Row(
             modifier =
                 Modifier
@@ -2447,6 +2469,22 @@ private fun EpisodeCard(
                         )
                     }
             }
+        }
+    }
+    if (onClick != null) {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            onClick = onClick,
+            colors = colors,
+        ) {
+            content()
+        }
+    } else {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            colors = colors,
+        ) {
+            content()
         }
     }
 }

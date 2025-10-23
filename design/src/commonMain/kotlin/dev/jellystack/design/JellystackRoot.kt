@@ -1024,6 +1024,7 @@ fun JellystackRoot(
                                 onRemoveDownload = removeDownload,
                                 onDownloadSeries = downloadSeriesAction,
                                 onDownloadSeason = downloadSeasonAction,
+                                onOpenItemDetail = onOpenItemDetail,
                                 audioTracks = availableAudioTracks,
                                 selectedAudioTrack = selectedAudioTrack,
                                 onSelectAudioTrack = { track ->
@@ -1242,6 +1243,7 @@ private fun JellystackPreviewRoot(
                                 knownEpisodes = emptyList(),
                                 onRetry = {},
                                 onPlay = { _, _ -> },
+                                onOpenItemDetail = {},
                                 modifier = Modifier.padding(padding),
                             )
                     }
@@ -1385,6 +1387,7 @@ private fun DetailContent(
     onRemoveDownload: (String) -> Unit = {},
     onDownloadSeries: (() -> Unit)? = null,
     onDownloadSeason: ((SeasonEpisodes) -> Unit)? = null,
+    onOpenItemDetail: (JellyfinItem) -> Unit,
     audioTracks: List<AudioTrack> = emptyList(),
     selectedAudioTrack: AudioTrack? = null,
     onSelectAudioTrack: (AudioTrack) -> Unit = {},
@@ -1457,6 +1460,7 @@ private fun DetailContent(
                 onDownloadSeries = onDownloadSeries,
                 onDownloadSeason = onDownloadSeason,
                 onViewSeries = if (isEpisode) onViewSeries else null,
+                onOpenEpisode = onOpenItemDetail,
                 audioTracks = audioTracks,
                 selectedAudioTrack = selectedAudioTrack,
                 onSelectAudioTrack = onSelectAudioTrack,
