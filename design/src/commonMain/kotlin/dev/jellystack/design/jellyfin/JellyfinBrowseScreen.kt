@@ -3,6 +3,7 @@
 package dev.jellystack.design.jellyfin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -50,6 +57,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -96,162 +107,283 @@ fun JellyfinBrowseScreen(
     showLibraryItems: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
     val pullRefreshState =
         rememberPullRefreshState(
             refreshing = state.isInitialLoading,
             onRefresh = onRefresh,
         )
-    val showBlockingLoading =
-        state.isInitialLoading &&
-            state.libraryItems.isEmpty() &&
-            state.continueWatching.isEmpty() &&
-            state.recentShows.isEmpty() &&
-            state.recentMovies.isEmpty()
-    val selectedLibrary =
-        remember(state.libraries, state.selectedLibraryId) {
-            state.libraries.firstOrNull { it.id == state.selectedLibraryId }
-        }
-    val isTvLibrary =
-        selectedLibrary
-            ?.collectionType
-            ?.equals("tvshows", ignoreCase = true) == true ||
-            selectedLibrary
-                ?.collectionType
-                ?.equals("series", ignoreCase = true) == true ||
-            state.libraryItems.any { item ->
-                item.type.equals("Series", ignoreCase = true) || item.type.equals("Episode", ignoreCase = true)
+    val showsLibrary =
+        remember(state.libraries) {
+            state.libraries.firstOrNull { library ->
+                library.collectionType?.equals("tvshows", ignoreCase = true) == true ||
+                    library.collectionType?.equals("series", ignoreCase = true) == true
             }
-    val seriesGroups =
-        remember(state.libraryItems, isTvLibrary) {
-            if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
         }
-    val nextUpItems =
-        remember(state.continueWatching, state.libraryItems) {
-            val continueEpisodes = state.continueWatching.filter { it.type.equals("Episode", ignoreCase = true) }
-            val upcomingEpisodes =
-                state.libraryItems
-                    .filter { it.type.equals("Episode", ignoreCase = true) }
-                    .filter { (it.playedPercentage ?: 0.0) < 90.0 }
-            (continueEpisodes + upcomingEpisodes)
-                .distinctBy { it.id }
-                .take(12)
+    val moviesLibrary =
+        remember(state.libraries) {
+            state.libraries.firstOrNull { library ->
+                library.collectionType?.equals("movies", ignoreCase = true) == true
+            }
         }
-    val recentShowGroups =
-        remember(state.recentShows) {
-            if (state.recentShows.isEmpty()) {
-                emptyList()
-            } else {
-                val groups = linkedMapOf<String, MutableTvSeriesGroup>()
-                state.recentShows.forEach { item ->
-                    when {
-                        item.type.equals("Series", ignoreCase = true) -> {
-                            val key = "series:${item.id}"
-                            val group = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
-                            group.series = item
-                        }
-                        item.type.equals("Episode", ignoreCase = true) -> {
-                            val key =
-                                item.seriesId?.let { seriesId -> "series:$seriesId" }
-                                    ?: item.parentId?.let { parentId -> "parent:$parentId" }
-                                    ?: "episode:${item.id}"
-                            val group = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
-                            group.episodes += item
-                            if (group.series == null) {
-                                group.series = item.toSeriesPlaceholder()
-                            }
+
+    if (showLibraryItems) {
+        val gridState = rememberLazyGridState()
+        val showBlockingLoading = state.isInitialLoading && state.libraryItems.isEmpty()
+        LoadMoreListener(
+            gridState = gridState,
+            shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
+            onLoadMore = onLoadMore,
+        )
+
+        Box(
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .pullRefresh(pullRefreshState),
+        ) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 140.dp),
+                state = gridState,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    StatusBanner(
+                        state = state,
+                        onRetry = onRefresh,
+                        onConnect = onConnectServer,
+                    )
+                }
+                if (showsLibrary != null || moviesLibrary != null) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        LibraryCategoryTabs(
+                            showsLibrary = showsLibrary,
+                            moviesLibrary = moviesLibrary,
+                            selectedLibraryId = state.selectedLibraryId,
+                            onSelectLibrary = onSelectLibrary,
+                        )
+                    }
+                }
+                if (showLibrarySelector && state.libraries.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        LibrarySelector(
+                            libraries = state.libraries,
+                            selectedLibraryId = state.selectedLibraryId,
+                            onSelectLibrary = onSelectLibrary,
+                        )
+                    }
+                }
+                if (state.libraryItems.isEmpty() && !state.isInitialLoading) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("No titles available in this library") },
+                        )
+                    }
+                } else {
+                    items(
+                        items = state.libraryItems,
+                        key = { it.id },
+                    ) { item ->
+                        LibraryPosterCard(
+                            item = item,
+                            baseUrl = state.imageBaseUrl,
+                            accessToken = state.imageAccessToken,
+                            onClick = { onOpenDetail(item) },
+                        )
+                    }
+                }
+                if (state.isPageLoading) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator()
                         }
                     }
                 }
-                groups.values.map { it.toImmutable() }.take(12)
+            }
+
+            if (!showBlockingLoading) {
+                PullRefreshIndicator(
+                    refreshing = state.isInitialLoading,
+                    state = pullRefreshState,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp),
+                )
+            }
+
+            if (showBlockingLoading) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        CircularProgressIndicator()
+                    }
+                }
             }
         }
-    val recentMovieItems =
-        remember(state.recentMovies) {
-            state.recentMovies
-                .asSequence()
-                .filter { item ->
-                    item.type.equals("Movie", ignoreCase = true) ||
-                        item.mediaType.equals("Video", ignoreCase = true)
-                }.distinctBy { it.id }
-                .take(12)
-                .toList()
-        }
-    if (showLibraryItems) {
+    } else {
+        val listState = rememberLazyListState()
+        val showBlockingLoading =
+            state.isInitialLoading &&
+                state.libraryItems.isEmpty() &&
+                state.continueWatching.isEmpty() &&
+                state.recentShows.isEmpty() &&
+                state.recentMovies.isEmpty()
+        val selectedLibrary =
+            remember(state.libraries, state.selectedLibraryId) {
+                state.libraries.firstOrNull { it.id == state.selectedLibraryId }
+            }
+        val isTvLibrary =
+            selectedLibrary
+                ?.collectionType
+                ?.equals("tvshows", ignoreCase = true) == true ||
+                selectedLibrary
+                    ?.collectionType
+                    ?.equals("series", ignoreCase = true) == true ||
+                state.libraryItems.any { item ->
+                    item.type.equals("Series", ignoreCase = true) || item.type.equals("Episode", ignoreCase = true)
+                }
+        val seriesGroups =
+            remember(state.libraryItems, isTvLibrary) {
+                if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
+            }
+        val nextUpItems =
+            remember(state.continueWatching, state.libraryItems) {
+                val continueEpisodes = state.continueWatching.filter { it.type.equals("Episode", ignoreCase = true) }
+                val upcomingEpisodes =
+                    state.libraryItems
+                        .filter { it.type.equals("Episode", ignoreCase = true) }
+                        .filter { (it.playedPercentage ?: 0.0) < 90.0 }
+                (continueEpisodes + upcomingEpisodes)
+                    .distinctBy { it.id }
+                    .take(12)
+            }
+        val recentShowGroups =
+            remember(state.recentShows) {
+                if (state.recentShows.isEmpty()) {
+                    emptyList()
+                } else {
+                    val groups = linkedMapOf<String, MutableTvSeriesGroup>()
+                    state.recentShows.forEach { item ->
+                        when {
+                            item.type.equals("Series", ignoreCase = true) -> {
+                                val key = "series:${item.id}"
+                                val group = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
+                                group.series = item
+                            }
+                            item.type.equals("Episode", ignoreCase = true) -> {
+                                val key =
+                                    item.seriesId?.let { seriesId -> "series:$seriesId" }
+                                        ?: item.parentId?.let { parentId -> "parent:$parentId" }
+                                        ?: "episode:${item.id}"
+                                val group = groups.getOrPut(key) { MutableTvSeriesGroup(key = key) }
+                                group.episodes += item
+                                if (group.series == null) {
+                                    group.series = item.toSeriesPlaceholder()
+                                }
+                            }
+                        }
+                    }
+                    groups.values.map { it.toImmutable() }.take(12)
+                }
+            }
+        val recentMovieItems =
+            remember(state.recentMovies) {
+                state.recentMovies
+                    .asSequence()
+                    .filter { item ->
+                        item.type.equals("Movie", ignoreCase = true) ||
+                            item.mediaType.equals("Video", ignoreCase = true)
+                    }.distinctBy { it.id }
+                    .take(12)
+                    .toList()
+            }
+
         LoadMoreListener(
             listState = listState,
             shouldLoadMore = !state.endReached && !state.isPageLoading && !state.isInitialLoading && state.libraryItems.isNotEmpty(),
             onLoadMore = onLoadMore,
         )
-    }
 
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .pullRefresh(pullRefreshState),
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            state = listState,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+        Box(
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .pullRefresh(pullRefreshState),
         ) {
-            item(key = "status") {
-                StatusBanner(
-                    state = state,
-                    onRetry = onRefresh,
-                    onConnect = onConnectServer,
-                )
-            }
-            if (showLibrarySelector && state.libraries.isNotEmpty()) {
-                item(key = "libraries") {
-                    LibrarySelector(
-                        libraries = state.libraries,
-                        selectedLibraryId = state.selectedLibraryId,
-                        onSelectLibrary = onSelectLibrary,
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                item(key = "status") {
+                    StatusBanner(
+                        state = state,
+                        onRetry = onRefresh,
+                        onConnect = onConnectServer,
                     )
                 }
-            }
-            if (state.continueWatching.isNotEmpty()) {
-                item(key = "continueWatching") {
-                    ContinueWatchingSection(
-                        items = state.continueWatching,
-                        baseUrl = state.imageBaseUrl,
-                        accessToken = state.imageAccessToken,
-                        onItemSelected = onOpenDetail,
-                    )
+                if (showLibrarySelector && state.libraries.isNotEmpty()) {
+                    item(key = "libraries") {
+                        LibrarySelector(
+                            libraries = state.libraries,
+                            selectedLibraryId = state.selectedLibraryId,
+                            onSelectLibrary = onSelectLibrary,
+                        )
+                    }
                 }
-            }
-            if (nextUpItems.isNotEmpty()) {
-                item(key = "nextUp") {
-                    NextUpSection(
-                        items = nextUpItems,
+                if (state.continueWatching.isNotEmpty()) {
+                    item(key = "continueWatching") {
+                        ContinueWatchingSection(
+                            items = state.continueWatching,
+                            baseUrl = state.imageBaseUrl,
+                            accessToken = state.imageAccessToken,
+                            onItemSelected = onOpenDetail,
+                        )
+                    }
+                }
+                if (nextUpItems.isNotEmpty()) {
+                    item(key = "nextUp") {
+                        NextUpSection(
+                            items = nextUpItems,
+                            baseUrl = state.imageBaseUrl,
+                            accessToken = state.imageAccessToken,
+                            onOpenItem = onOpenDetail,
+                        )
+                    }
+                }
+                item(key = "recentShows") {
+                    RecentlyAddedShowsSection(
+                        groups = recentShowGroups,
                         baseUrl = state.imageBaseUrl,
                         accessToken = state.imageAccessToken,
                         onOpenItem = onOpenDetail,
                     )
                 }
-            }
-            item(key = "recentShows") {
-                RecentlyAddedShowsSection(
-                    groups = recentShowGroups,
-                    baseUrl = state.imageBaseUrl,
-                    accessToken = state.imageAccessToken,
-                    onOpenItem = onOpenDetail,
-                )
-            }
-            item(key = "recentMovies") {
-                RecentlyAddedMoviesSection(
-                    items = recentMovieItems,
-                    baseUrl = state.imageBaseUrl,
-                    accessToken = state.imageAccessToken,
-                    onOpenItem = onOpenDetail,
-                )
-            }
-            if (showLibraryItems) {
-                item(key = "spacerAfterRecent") {
-                    Spacer(modifier = Modifier.height(8.dp))
+                item(key = "recentMovies") {
+                    RecentlyAddedMoviesSection(
+                        items = recentMovieItems,
+                        baseUrl = state.imageBaseUrl,
+                        accessToken = state.imageAccessToken,
+                        onOpenItem = onOpenDetail,
+                    )
+                }
+                if (state.libraryItems.isNotEmpty()) {
+                    item(key = "spacerAfterRecent") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
                 if (isTvLibrary) {
                     if (seriesGroups.isNotEmpty()) {
@@ -290,45 +422,92 @@ fun JellyfinBrowseScreen(
                         )
                     }
                 }
+                if (state.isPageLoading) {
+                    item(key = "pagingLoader") {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
             }
-            if (showLibraryItems && state.isPageLoading) {
-                item(key = "pagingLoader") {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
+
+            if (!showBlockingLoading) {
+                PullRefreshIndicator(
+                    refreshing = state.isInitialLoading,
+                    state = pullRefreshState,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp),
+                )
+            }
+
+            if (showBlockingLoading) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         CircularProgressIndicator()
                     }
                 }
             }
         }
+    }
+}
 
-        if (!showBlockingLoading) {
-            PullRefreshIndicator(
-                refreshing = state.isInitialLoading,
-                state = pullRefreshState,
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 12.dp),
-            )
-        }
-
-        if (showBlockingLoading) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    CircularProgressIndicator()
-                }
+@Composable
+private fun LibraryCategoryTabs(
+    showsLibrary: JellyfinLibrary?,
+    moviesLibrary: JellyfinLibrary?,
+    selectedLibraryId: String?,
+    onSelectLibrary: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tabs =
+        remember(showsLibrary, moviesLibrary) {
+            buildList {
+                showsLibrary?.let { add(LibraryCategoryTabData(title = "Shows", library = it)) }
+                moviesLibrary?.let { add(LibraryCategoryTabData(title = "Movies", library = it)) }
             }
+        }
+    if (tabs.isEmpty()) {
+        return
+    }
+    val selectedIndex = tabs.indexOfFirst { it.library.id == selectedLibraryId }
+    val fallbackIndex = selectedIndex.takeIf { it >= 0 } ?: 0
+    TabRow(
+        selectedTabIndex = fallbackIndex,
+        modifier = modifier.fillMaxWidth(),
+        indicator = { tabPositions ->
+            if (selectedIndex >= 0 && selectedIndex < tabPositions.size) {
+                TabRowDefaults.Indicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedIndex]),
+                )
+            }
+        },
+    ) {
+        tabs.forEach { tab ->
+            val isSelected = tab.library.id == selectedLibraryId
+            Tab(
+                selected = isSelected,
+                onClick = { onSelectLibrary(tab.library.id) },
+                text = { Text(tab.title) },
+            )
         }
     }
 }
+
+private data class LibraryCategoryTabData(
+    val title: String,
+    val library: JellyfinLibrary,
+)
 
 @Composable
 private fun LibrarySelector(
@@ -362,6 +541,43 @@ private fun LibrarySelector(
                     ),
             )
         }
+    }
+}
+
+@Composable
+private fun LibraryPosterCard(
+    item: JellyfinItem,
+    baseUrl: String?,
+    accessToken: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PosterImage(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+            baseUrl = baseUrl,
+            itemId = item.id,
+            primaryTag = item.primaryImageTag,
+            thumbTag = item.thumbImageTag,
+            backdropTag = item.backdropImageTag,
+            accessToken = accessToken,
+            contentDescription = item.name,
+        )
+        Text(
+            text = item.name,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1401,6 +1617,31 @@ private fun StatusBanner(
                 label = { Text("Connect a Jellyfin server to start browsing") },
             )
         else -> Spacer(modifier = Modifier.height(1.dp))
+    }
+}
+
+@Composable
+private fun LoadMoreListener(
+    gridState: LazyGridState,
+    shouldLoadMore: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    LaunchedEffect(gridState, shouldLoadMore) {
+        if (!shouldLoadMore) {
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            gridState.layoutInfo.visibleItemsInfo
+                .lastOrNull()
+                ?.index ?: -1
+        }.filter { index -> index >= 0 }
+            .distinctUntilChanged()
+            .collect { index ->
+                val nearingEnd = index >= gridState.layoutInfo.totalItemsCount - 4
+                if (nearingEnd) {
+                    onLoadMore()
+                }
+            }
     }
 }
 
