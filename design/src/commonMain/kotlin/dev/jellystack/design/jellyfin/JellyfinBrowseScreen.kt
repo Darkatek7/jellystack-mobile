@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,10 +32,15 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -52,6 +58,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -59,7 +66,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,15 +74,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -92,6 +103,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.datetime.Instant
+import kotlin.collections.buildSet
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -125,8 +137,78 @@ fun JellyfinBrowseScreen(
                 library.collectionType?.equals("movies", ignoreCase = true) == true
             }
         }
+    val categoryLibraryIds =
+        remember(showsLibrary?.id, moviesLibrary?.id) {
+            buildSet {
+                showsLibrary?.id?.let(::add)
+                moviesLibrary?.id?.let(::add)
+            }
+        }
+    val additionalLibraries =
+        remember(state.libraries, categoryLibraryIds) {
+            state.libraries.filter { library -> library.id !in categoryLibraryIds }
+        }
+    val selectedLibrary =
+        remember(state.libraries, state.selectedLibraryId) {
+            state.libraries.firstOrNull { it.id == state.selectedLibraryId }
+        }
+    val isTvLibrary =
+        remember(state.libraryItems, selectedLibrary) {
+            selectedLibrary
+                ?.collectionType
+                ?.equals("tvshows", ignoreCase = true) == true ||
+                selectedLibrary
+                    ?.collectionType
+                    ?.equals("series", ignoreCase = true) == true ||
+                state.libraryItems.any { item ->
+                    item.type.equals("Series", ignoreCase = true) ||
+                        item.type.equals("Episode", ignoreCase = true)
+                }
+        }
+    val tvPosterEntries =
+        remember(state.libraryItems, isTvLibrary) {
+            if (!isTvLibrary) {
+                emptyList()
+            } else {
+                groupTvSeries(state.libraryItems).mapNotNull { group ->
+                    val posterItem = group.series ?: group.fallbackEpisode?.toSeriesPlaceholder()
+                    val openItem = group.openItem
+                    if (posterItem != null && openItem != null) {
+                        TvSeriesPosterEntry(id = group.id, poster = posterItem, openItem = openItem)
+                    } else {
+                        null
+                    }
+                }
+            }
+        }
 
     if (showLibraryItems) {
+        var searchQuery by rememberSaveable(state.selectedLibraryId) { mutableStateOf("") }
+        val trimmedQuery = remember(searchQuery) { searchQuery.trim() }
+        val filteredTvPosterEntries =
+            remember(tvPosterEntries, trimmedQuery) {
+                if (trimmedQuery.isEmpty()) {
+                    tvPosterEntries
+                } else {
+                    tvPosterEntries.filter { entry ->
+                        entry.poster.name.contains(trimmedQuery, ignoreCase = true) ||
+                            (entry.poster.seriesName?.contains(trimmedQuery, ignoreCase = true) == true)
+                    }
+                }
+            }
+        val filteredLibraryItems =
+            remember(state.libraryItems, trimmedQuery) {
+                if (trimmedQuery.isEmpty()) {
+                    state.libraryItems
+                } else {
+                    state.libraryItems.filter { item ->
+                        item.name.contains(trimmedQuery, ignoreCase = true) ||
+                            (item.seriesName?.contains(trimmedQuery, ignoreCase = true) == true)
+                    }
+                }
+            }
+        val hasUnfilteredContent = if (isTvLibrary) tvPosterEntries.isNotEmpty() else state.libraryItems.isNotEmpty()
+        val hasFilteredContent = if (isTvLibrary) filteredTvPosterEntries.isNotEmpty() else filteredLibraryItems.isNotEmpty()
         val gridState = rememberLazyGridState()
         val showBlockingLoading = state.isInitialLoading && state.libraryItems.isEmpty()
         LoadMoreListener(
@@ -155,6 +237,14 @@ fun JellyfinBrowseScreen(
                         onConnect = onConnectServer,
                     )
                 }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LibrarySearchField(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        onClear = { searchQuery = "" },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (showsLibrary != null || moviesLibrary != null) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         LibraryCategoryTabs(
@@ -165,16 +255,16 @@ fun JellyfinBrowseScreen(
                         )
                     }
                 }
-                if (showLibrarySelector && state.libraries.isNotEmpty()) {
+                if (showLibrarySelector && additionalLibraries.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         LibrarySelector(
-                            libraries = state.libraries,
+                            libraries = additionalLibraries,
                             selectedLibraryId = state.selectedLibraryId,
                             onSelectLibrary = onSelectLibrary,
                         )
                     }
                 }
-                if (state.libraryItems.isEmpty() && !state.isInitialLoading) {
+                if (!state.isInitialLoading && !hasUnfilteredContent) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         AssistChip(
                             onClick = {},
@@ -182,9 +272,29 @@ fun JellyfinBrowseScreen(
                             label = { Text("No titles available in this library") },
                         )
                     }
+                } else if (trimmedQuery.isNotEmpty() && !hasFilteredContent) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("No titles match your search") },
+                        )
+                    }
+                } else if (isTvLibrary) {
+                    items(
+                        items = filteredTvPosterEntries,
+                        key = { it.id },
+                    ) { entry ->
+                        LibraryPosterCard(
+                            item = entry.poster,
+                            baseUrl = state.imageBaseUrl,
+                            accessToken = state.imageAccessToken,
+                            onClick = { onOpenDetail(entry.openItem) },
+                        )
+                    }
                 } else {
                     items(
-                        items = state.libraryItems,
+                        items = filteredLibraryItems,
                         key = { it.id },
                     ) { item ->
                         LibraryPosterCard(
@@ -240,20 +350,6 @@ fun JellyfinBrowseScreen(
                 state.continueWatching.isEmpty() &&
                 state.recentShows.isEmpty() &&
                 state.recentMovies.isEmpty()
-        val selectedLibrary =
-            remember(state.libraries, state.selectedLibraryId) {
-                state.libraries.firstOrNull { it.id == state.selectedLibraryId }
-            }
-        val isTvLibrary =
-            selectedLibrary
-                ?.collectionType
-                ?.equals("tvshows", ignoreCase = true) == true ||
-                selectedLibrary
-                    ?.collectionType
-                    ?.equals("series", ignoreCase = true) == true ||
-                state.libraryItems.any { item ->
-                    item.type.equals("Series", ignoreCase = true) || item.type.equals("Episode", ignoreCase = true)
-                }
         val seriesGroups =
             remember(state.libraryItems, isTvLibrary) {
                 if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
@@ -335,10 +431,10 @@ fun JellyfinBrowseScreen(
                         onConnect = onConnectServer,
                     )
                 }
-                if (showLibrarySelector && state.libraries.isNotEmpty()) {
+                if (showLibrarySelector && additionalLibraries.isNotEmpty()) {
                     item(key = "libraries") {
                         LibrarySelector(
-                            libraries = state.libraries,
+                            libraries = additionalLibraries,
                             selectedLibraryId = state.selectedLibraryId,
                             onSelectLibrary = onSelectLibrary,
                         )
@@ -482,26 +578,95 @@ private fun LibraryCategoryTabs(
     }
     val selectedIndex = tabs.indexOfFirst { it.library.id == selectedLibraryId }
     val fallbackIndex = selectedIndex.takeIf { it >= 0 } ?: 0
-    TabRow(
-        selectedTabIndex = fallbackIndex,
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        indicator = { tabPositions ->
-            if (selectedIndex >= 0 && selectedIndex < tabPositions.size) {
-                TabRowDefaults.Indicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedIndex]),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp,
+    ) {
+        TabRow(
+            selectedTabIndex = fallbackIndex,
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            indicator = { tabPositions ->
+                if (tabPositions.isNotEmpty()) {
+                    val indicatorIndex =
+                        if (selectedIndex in tabPositions.indices) {
+                            selectedIndex
+                        } else {
+                            fallbackIndex.coerceAtMost(tabPositions.lastIndex)
+                        }
+                    Box(
+                        modifier =
+                            Modifier
+                                .tabIndicatorOffset(tabPositions[indicatorIndex])
+                                .padding(4.dp)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .zIndex(-1f),
+                    )
+                }
+            },
+            divider = {},
+        ) {
+            tabs.forEach { tab ->
+                val isSelected = tab.library.id == selectedLibraryId
+                Tab(
+                    selected = isSelected,
+                    onClick = { onSelectLibrary(tab.library.id) },
+                    selectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = {
+                        Text(
+                            text = tab.title,
+                            style =
+                                if (isSelected) {
+                                    MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                                } else {
+                                    MaterialTheme.typography.titleMedium
+                                },
+                        )
+                    },
                 )
             }
-        },
-    ) {
-        tabs.forEach { tab ->
-            val isSelected = tab.library.id == selectedLibraryId
-            Tab(
-                selected = isSelected,
-                onClick = { onSelectLibrary(tab.library.id) },
-                text = { Text(tab.title) },
-            )
         }
     }
+}
+
+@Composable
+private fun LibrarySearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusManager = LocalFocusManager.current
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier,
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon =
+            if (query.isNotEmpty()) {
+                {
+                    IconButton(
+                        onClick = {
+                            onClear()
+                            focusManager.clearFocus()
+                        },
+                    ) {
+                        Icon(Icons.Filled.Clear, contentDescription = "Clear search")
+                    }
+                }
+            } else {
+                null
+            },
+        placeholder = { Text("Search library") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+    )
 }
 
 private data class LibraryCategoryTabData(
@@ -1175,6 +1340,12 @@ private fun groupTvSeries(items: List<JellyfinItem>): List<TvSeriesGroup> {
             }.thenBy { it.series?.name ?: it.title },
         )
 }
+
+private data class TvSeriesPosterEntry(
+    val id: String,
+    val poster: JellyfinItem,
+    val openItem: JellyfinItem,
+)
 
 private fun episodeLabel(item: JellyfinItem): String {
     val season = item.parentIndexNumber
