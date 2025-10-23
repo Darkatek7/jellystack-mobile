@@ -100,6 +100,7 @@ import dev.jellystack.core.jellyfin.JellyfinItemDetail
 import dev.jellystack.core.jellyfin.JellyfinLibrary
 import dev.jellystack.players.AudioTrack
 import dev.jellystack.players.SubtitleTrack
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -188,7 +189,22 @@ fun JellyfinBrowseScreen(
             rememberSaveable(state.selectedLibraryId, stateSaver = TextFieldValue.Saver) {
                 mutableStateOf(TextFieldValue(""))
             }
-        val trimmedQuery = remember(searchQuery.text) { searchQuery.text.trim() }
+        var debouncedQuery by remember { mutableStateOf("") }
+        LaunchedEffect(searchQuery.text) {
+            val normalizedQuery = searchQuery.text.trim()
+            if (normalizedQuery == debouncedQuery) {
+                return@LaunchedEffect
+            }
+            if (normalizedQuery.isEmpty()) {
+                debouncedQuery = ""
+            } else {
+                delay(250)
+                if (searchQuery.text.trim() == normalizedQuery) {
+                    debouncedQuery = normalizedQuery
+                }
+            }
+        }
+        val trimmedQuery = debouncedQuery
         val filteredTvPosterEntries =
             remember(tvPosterEntries, trimmedQuery) {
                 if (trimmedQuery.isEmpty()) {
