@@ -132,6 +132,24 @@ class JellyseerrApi internal constructor(
                 }.body()
         }
 
+    suspend fun getMovieDetails(movieId: Int): JellyseerrMovieDetailsDto =
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/movie/$movieId") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
+
+    suspend fun getTvDetails(showId: Int): JellyseerrTvDetailsDto =
+        withSessionRetry {
+            val cookie = prepareSessionCookie()
+            client
+                .get("$apiBaseUrl/tv/$showId") {
+                    applyAuthHeaders(cookie)
+                }.body()
+        }
+
     suspend fun getRequestCounts(): JellyseerrRequestCountsDto =
         withSessionRetry {
             val cookie = prepareSessionCookie()
@@ -450,6 +468,26 @@ data class JellyseerrProfileDto(
     @SerialName("email") val email: String? = null,
     @SerialName("avatar") val avatar: String? = null,
     @SerialName("userType") @Serializable(with = JellyseerrUserTypeSerializer::class) val userType: Int? = null,
+)
+
+@Serializable
+data class JellyseerrMovieDetailsDto(
+    val id: Int,
+    @SerialName("title") val title: String? = null,
+    @SerialName("originalTitle") val originalTitle: String? = null,
+    @SerialName("posterPath") val posterPath: String? = null,
+    @SerialName("backdropPath") val backdropPath: String? = null,
+    @SerialName("releaseDate") val releaseDate: String? = null,
+)
+
+@Serializable
+data class JellyseerrTvDetailsDto(
+    val id: Int,
+    @SerialName("name") val name: String? = null,
+    @SerialName("originalName") val originalName: String? = null,
+    @SerialName("posterPath") val posterPath: String? = null,
+    @SerialName("backdropPath") val backdropPath: String? = null,
+    @SerialName("firstAirDate") val firstAirDate: String? = null,
 )
 
 @Serializable

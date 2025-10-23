@@ -346,8 +346,12 @@ private fun SearchResultCard(
                         ?.uppercaseChar()
                         ?.toString()
                 }
+            val resolvedPosterPath =
+                remember(item.posterPath, item.backdropPath) {
+                    item.posterPath ?: item.backdropPath
+                }
             PosterArtwork(
-                posterPath = item.posterPath,
+                posterPath = resolvedPosterPath,
                 contentDescription = item.title,
                 placeholderText = posterPlaceholder,
                 modifier =
@@ -478,18 +482,21 @@ private fun RequestCard(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             val resolvedTitle =
-                remember(summary.title, summary.originalTitle, summary.profileName, summary.mediaType) {
+                remember(summary.title, summary.originalTitle, summary.mediaType) {
                     summary.title?.takeUnless { it.isBlank() }
                         ?: summary.originalTitle?.takeUnless { it.isBlank() }
-                        ?: summary.profileName?.takeUnless { it.isBlank() }
                         ?: summary.mediaType.displayName()
                 }
             val posterPlaceholder =
                 remember(resolvedTitle) {
                     resolvedTitle.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString()
                 }
+            val resolvedPosterPath =
+                remember(summary.posterPath, summary.backdropPath) {
+                    summary.posterPath ?: summary.backdropPath
+                }
             PosterArtwork(
-                posterPath = summary.posterPath,
+                posterPath = resolvedPosterPath,
                 contentDescription = resolvedTitle,
                 placeholderText = posterPlaceholder,
                 modifier =
@@ -549,9 +556,10 @@ private fun RequestCard(
                         onClick = { onDelete(summary) },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Delete")
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete request",
+                        )
                     }
                     if (isAdmin && summary.canRemoveFromService) {
                         Button(

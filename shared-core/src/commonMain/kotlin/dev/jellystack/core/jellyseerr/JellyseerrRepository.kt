@@ -9,7 +9,9 @@ import dev.jellystack.network.jellyseerr.JellyseerrCreateRequestPayload
 import dev.jellystack.network.jellyseerr.JellyseerrHttpException
 import dev.jellystack.network.jellyseerr.JellyseerrLanguageProfileDto
 import dev.jellystack.network.jellyseerr.JellyseerrMediaInfoDto
+import dev.jellystack.network.jellyseerr.JellyseerrMovieDetailsDto
 import dev.jellystack.network.jellyseerr.JellyseerrProfileDto
+import dev.jellystack.network.jellyseerr.JellyseerrQualityProfileDto
 import dev.jellystack.network.jellyseerr.JellyseerrRequestCountsDto
 import dev.jellystack.network.jellyseerr.JellyseerrRequestDto
 import dev.jellystack.network.jellyseerr.JellyseerrRequestsResponseDto
@@ -18,6 +20,7 @@ import dev.jellystack.network.jellyseerr.JellyseerrSearchResultDto
 import dev.jellystack.network.jellyseerr.JellyseerrSeasonDto
 import dev.jellystack.network.jellyseerr.JellyseerrServiceDetailsDto
 import dev.jellystack.network.jellyseerr.JellyseerrServiceSummaryDto
+import dev.jellystack.network.jellyseerr.JellyseerrTvDetailsDto
 import dev.jellystack.network.jellyseerr.JellyseerrUserDto
 import dev.jellystack.network.jellyseerr.seasonsAll
 import dev.jellystack.network.jellyseerr.seasonsList
@@ -26,6 +29,8 @@ import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -46,6 +51,9 @@ class JellyseerrRepository(
 
     private val apiCache = mutableMapOf<String, CachedApi>()
     private val credentialCache = mutableMapOf<String, Pair<String?, String?>>()
+    private val metadataCache = mutableMapOf<MetadataCacheKey, JellyseerrMediaMetadata>()
+    private val metadataOrder = ArrayDeque<MetadataCacheKey>()
+    private val metadataMutex = Mutex()
 
     private suspend fun api(environment: JellyseerrEnvironment): JellyseerrApi {
         val cacheEntry = apiCache[environment.serverId]
@@ -69,6 +77,127 @@ class JellyseerrRepository(
         return api
     }
 
+    private suspend fun getCachedMetadata(key: MetadataCacheKey): JellyseerrMediaMetadata? = metadataMutex.withLock { metadataCache[key] }
+
+    private suspend fun setCachedMetadata(
+        key: MetadataCacheKey,
+        metadata: JellyseerrMediaMetadata,
+    ) {
+        metadataMutex.withLock {
+            metadataCache[key] = metadata
+            metadataOrder.remove(key)
+            metadataOrder.addLast(key)
+            while (metadataOrder.size > METADATA_CACHE_MAX_ENTRIES) {
+                val oldest = metadataOrder.removeFirstOrNull() ?: break
+                metadataCache.remove(oldest)
+            }
+        }
+    }
+
+    private suspend fun enrichRequestMetadata(
+        environment: JellyseerrEnvironment,
+        page: JellyseerrRequestsPage,
+    ): JellyseerrRequestsPage {
+        val results = page.results
+        if (results.isEmpty()) {
+            return page
+        }
+        val keysNeedingMetadata =
+            results
+                .filter { summary ->
+                    summary.tmdbId != null &&
+                        (
+                            summary.title.isNullOrBlank() ||
+                                summary.originalTitle.isNullOrBlank() ||
+                                summary.posterPath.isNullOrBlank() ||
+                                summary.backdropPath.isNullOrBlank()
+                        )
+                }.mapNotNull { summary ->
+                    summary.tmdbId?.let { MetadataCacheKey(environment.serverId, summary.mediaType, it) }
+                }.distinct()
+        if (keysNeedingMetadata.isEmpty()) {
+            return page
+        }
+        val metadataByKey = mutableMapOf<MetadataCacheKey, JellyseerrMediaMetadata>()
+        for (key in keysNeedingMetadata) {
+            val cached = getCachedMetadata(key)
+            if (cached != null) {
+                metadataByKey[key] = cached
+                continue
+            }
+            val fetched = fetchMetadata(environment, key)
+            if (fetched != null) {
+                metadataByKey[key] = fetched
+                setCachedMetadata(key, fetched)
+            }
+        }
+        if (metadataByKey.isEmpty()) {
+            return page
+        }
+        val enrichedResults =
+            results.map { summary ->
+                val tmdbId = summary.tmdbId ?: return@map summary
+                val key = MetadataCacheKey(environment.serverId, summary.mediaType, tmdbId)
+                val metadata = metadataByKey[key] ?: return@map summary
+                summary.copy(
+                    title = summary.title ?: metadata.title,
+                    originalTitle = summary.originalTitle ?: metadata.originalTitle,
+                    posterPath = summary.posterPath ?: metadata.posterPath,
+                    backdropPath = summary.backdropPath ?: metadata.backdropPath,
+                )
+            }
+        return page.copy(results = enrichedResults)
+    }
+
+    private suspend fun fetchMetadata(
+        environment: JellyseerrEnvironment,
+        key: MetadataCacheKey,
+    ): JellyseerrMediaMetadata? =
+        when (key.mediaType) {
+            JellyseerrMediaType.MOVIE ->
+                runCatching { api(environment).getMovieDetails(key.tmdbId) }
+                    .map { it.toMetadata() }
+                    .getOrNull()
+            JellyseerrMediaType.TV ->
+                runCatching { api(environment).getTvDetails(key.tmdbId) }
+                    .map { it.toMetadata() }
+                    .getOrNull()
+            else -> null
+        }
+
+    private fun JellyseerrMovieDetailsDto.toMetadata(): JellyseerrMediaMetadata =
+        JellyseerrMediaMetadata(
+            title = firstNonBlank(title, originalTitle),
+            originalTitle = firstNonBlank(originalTitle, title),
+            posterPath = posterPath.ifNotBlank(),
+            backdropPath = backdropPath.ifNotBlank(),
+        )
+
+    private fun JellyseerrTvDetailsDto.toMetadata(): JellyseerrMediaMetadata =
+        JellyseerrMediaMetadata(
+            title = firstNonBlank(name, originalName),
+            originalTitle = firstNonBlank(originalName, name),
+            posterPath = posterPath.ifNotBlank(),
+            backdropPath = backdropPath.ifNotBlank(),
+        )
+
+    private fun firstNonBlank(vararg values: String?): String? = values.firstOrNull { !it.isNullOrBlank() }
+
+    private fun String?.ifNotBlank(): String? = this?.takeUnless { it.isBlank() }
+
+    private data class MetadataCacheKey(
+        val serverId: String,
+        val mediaType: JellyseerrMediaType,
+        val tmdbId: Int,
+    )
+
+    private data class JellyseerrMediaMetadata(
+        val title: String?,
+        val originalTitle: String?,
+        val posterPath: String?,
+        val backdropPath: String?,
+    )
+
     suspend fun fetchRequests(
         environment: JellyseerrEnvironment,
         filter: JellyseerrRequestFilter,
@@ -77,7 +206,8 @@ class JellyseerrRepository(
     ): JellyseerrRequestsPage =
         try {
             val response = api(environment).listRequests(take = take, skip = skip, filter = filter.queryValue)
-            response.toDomain()
+            val page = response.toDomain()
+            enrichRequestMetadata(environment, page)
         } catch (error: Throwable) {
             JellystackLog.e(
                 "Failed to fetch Jellyseerr requests for ${environment.serverId} at ${environment.baseUrl}: ${error.message}",
@@ -358,17 +488,17 @@ class JellyseerrRepository(
                 `4k` = JellyseerrMediaStatus.from(effectiveMedia?.status4k),
             )
         val resolvedTitle =
-            listOf(
+            firstNonBlank(
                 effectiveMedia?.title,
                 effectiveMedia?.name,
                 effectiveMedia?.originalTitle,
                 effectiveMedia?.originalName,
-            ).firstOrNull { !it.isNullOrBlank() }
+            )
         val resolvedOriginalTitle =
-            listOf(
+            firstNonBlank(
                 effectiveMedia?.originalTitle,
                 effectiveMedia?.originalName,
-            ).firstOrNull { !it.isNullOrBlank() }
+            )
         return JellyseerrRequestSummary(
             id = id,
             mediaId = effectiveMedia?.id ?: mediaId,
@@ -386,8 +516,8 @@ class JellyseerrRepository(
             requestedBy = requestedBy?.toDomain(),
             profileName = profileName,
             seasons = seasons.mapNotNull { it.toDomain() },
-            posterPath = effectiveMedia?.posterPath,
-            backdropPath = effectiveMedia?.backdropPath,
+            posterPath = effectiveMedia?.posterPath.ifNotBlank(),
+            backdropPath = effectiveMedia?.backdropPath.ifNotBlank(),
         )
     }
 
@@ -469,24 +599,36 @@ class JellyseerrRepository(
         val server = details?.server ?: this
         val resolvedName = server.name?.takeIf { it.isNotBlank() } ?: "Server ${server.id}"
         val fallbackProfileId = details?.server?.activeProfileId ?: activeProfileId
-        val languageProfiles = details?.languageProfiles
-        if (!languageProfiles.isNullOrEmpty()) {
+        val fallbackLanguageProfileId = details?.server?.activeLanguageProfileId ?: activeLanguageProfileId
+        val languageProfiles = details?.languageProfiles.orEmpty()
+        val qualityProfiles = details?.profiles.orEmpty()
+        if (languageProfiles.isNotEmpty()) {
             return languageProfiles.map { profile ->
                 profile.toDomain(
                     server = server,
                     resolvedName = resolvedName,
                     fallbackProfileId = fallbackProfileId,
+                    activeLanguageProfileId = fallbackLanguageProfileId,
+                )
+            }
+        }
+        if (qualityProfiles.isNotEmpty()) {
+            return qualityProfiles.map { profile ->
+                profile.toDomain(
+                    server = server,
+                    resolvedName = resolvedName,
+                    activeProfileId = fallbackProfileId,
                 )
             }
         }
         return listOf(
             JellyseerrLanguageProfileOption(
-                languageProfileId = null,
+                languageProfileId = fallbackLanguageProfileId,
                 name = resolvedName,
                 serviceId = server.id,
                 serviceName = server.name,
                 is4k = server.is4k ?: false,
-                isDefault = server.isDefault ?: false,
+                isDefault = (server.isDefault ?: false) || fallbackLanguageProfileId != null,
                 profileId = fallbackProfileId,
             ),
         )
@@ -496,6 +638,7 @@ class JellyseerrRepository(
         server: JellyseerrServiceSummaryDto,
         resolvedName: String,
         fallbackProfileId: Int?,
+        activeLanguageProfileId: Int?,
     ): JellyseerrLanguageProfileOption =
         JellyseerrLanguageProfileOption(
             languageProfileId = id,
@@ -503,8 +646,31 @@ class JellyseerrRepository(
             serviceId = server.id,
             serviceName = server.name,
             is4k = server.is4k ?: false,
-            isDefault = server.isDefault ?: false,
+            isDefault =
+                when {
+                    activeLanguageProfileId != null -> id == activeLanguageProfileId
+                    else -> server.isDefault ?: false
+                },
             profileId = profileId ?: fallbackProfileId,
+        )
+
+    private fun JellyseerrQualityProfileDto.toDomain(
+        server: JellyseerrServiceSummaryDto,
+        resolvedName: String,
+        activeProfileId: Int?,
+    ): JellyseerrLanguageProfileOption =
+        JellyseerrLanguageProfileOption(
+            languageProfileId = null,
+            name = name.takeIf { it.isNotBlank() } ?: resolvedName,
+            serviceId = server.id,
+            serviceName = server.name,
+            is4k = server.is4k ?: false,
+            isDefault =
+                when {
+                    activeProfileId != null -> id == activeProfileId
+                    else -> server.isDefault ?: false
+                },
+            profileId = id,
         )
 
     private fun JellyseerrMediaType.toWireValue(): String =
@@ -526,5 +692,6 @@ class JellyseerrRepository(
 
     companion object {
         const val DEFAULT_PAGE_SIZE = 20
+        private const val METADATA_CACHE_MAX_ENTRIES = 100
     }
 }
