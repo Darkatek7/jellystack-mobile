@@ -501,44 +501,6 @@ fun JellyfinBrowseScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
-                if (isTvLibrary) {
-                    if (seriesGroups.isNotEmpty()) {
-                        item(key = "allSeriesHeader") {
-                            SectionHeader(title = "All Series")
-                        }
-                    }
-                    items(
-                        items = seriesGroups,
-                        key = { it.id },
-                    ) { group ->
-                        TvSeriesCard(
-                            group = group,
-                            baseUrl = state.imageBaseUrl,
-                            accessToken = state.imageAccessToken,
-                            onOpenSeries = { series ->
-                                onOpenDetail(series)
-                            },
-                            onOpenEpisode = onOpenDetail,
-                        )
-                    }
-                } else {
-                    if (state.libraryItems.isNotEmpty()) {
-                        item(key = "allItemsHeader") {
-                            SectionHeader(title = "All Items")
-                        }
-                    }
-                    items(
-                        items = state.libraryItems,
-                        key = { it.id },
-                    ) { item ->
-                        LibraryItemRow(
-                            item = item,
-                            baseUrl = state.imageBaseUrl,
-                            accessToken = state.imageAccessToken,
-                            onClick = { onOpenDetail(item) },
-                        )
-                    }
-                }
                 if (state.isPageLoading) {
                     item(key = "pagingLoader") {
                         Row(
