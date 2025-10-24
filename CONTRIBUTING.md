@@ -6,7 +6,7 @@ Thanks for taking the time to contribute! This guide walks through tooling, codi
 
 1. **Fork and clone** the repository.
 2. Ensure you have the required tooling:
-   - JDK 21+
+   - JDK 17
    - Android SDK with API level 35 platform tools
    - Xcode 15+ (for iOS builds)
 3. Install the Kotlin Multiplatform Mobile prerequisites documented in the [JetBrains guide](https://www.jetbrains.com/help/kotlin-multiplatform-dev/setup.html).
