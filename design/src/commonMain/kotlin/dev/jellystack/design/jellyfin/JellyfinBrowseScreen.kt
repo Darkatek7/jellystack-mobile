@@ -1144,14 +1144,14 @@ private fun RecentlyAddedMoviesSection(
             EmptySectionMessage("No movies available yet")
             return@Column
         }
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items.forEach { item ->
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.id }) { item ->
                 MoviePosterCard(
                     item = item,
                     baseUrl = baseUrl,
                     accessToken = accessToken,
                     onClick = { onOpenItem(item) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.width(148.dp),
                 )
             }
         }
@@ -1167,90 +1167,78 @@ private fun MoviePosterCard(
     modifier: Modifier = Modifier,
 ) {
     val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    val baseModifier = modifier.fillMaxWidth()
-    val content: @Composable () -> Unit = {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            PosterImage(
+    Card(
+        modifier = modifier,
+        onClick = onClick,
+        colors = cardColors,
+    ) {
+        Column {
+            Box {
+                PosterImage(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f),
+                    baseUrl = baseUrl,
+                    itemId = item.id,
+                    primaryTag = item.primaryImageTag,
+                    thumbTag = item.thumbImageTag,
+                    backdropTag = item.backdropImageTag,
+                    accessToken = accessToken,
+                    contentDescription = item.name,
+                )
+                val progress = progressFraction(item)
+                if (progress > 0f) {
+                    LinearProgressIndicator(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter),
+                        progress = progress,
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
+            }
+            Column(
                 modifier =
                     Modifier
-                        .width(96.dp)
-                        .height(144.dp)
-                        .clip(MaterialTheme.shapes.medium),
-                baseUrl = baseUrl,
-                itemId = item.id,
-                primaryTag = item.primaryImageTag,
-                thumbTag = item.thumbImageTag,
-                backdropTag = item.backdropImageTag,
-                accessToken = accessToken,
-                contentDescription = item.name,
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = item.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
+                    minLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val progress = progressFraction(item)
-                if (progress > 0f) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        LinearProgressIndicator(
-                            progress = progress,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            text = "${(progress * 100).roundToInt()}% watched",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
                 val detailParts =
                     buildList {
-                        item.productionYear?.let { add(it.toString()) }
-                        item.officialRating?.let { add(it) }
-                        item.runTimeTicks?.let { ticks ->
-                            val minutes = ticksToMinutes(ticks)
-                            if (minutes > 0) add("${minutes}m")
-                        }
+                        item.productionYear?.takeIf { it > 0 }?.let { add(it.toString()) }
+                        item.officialRating?.takeIf { it.isNotBlank() }?.let { add(it) }
                     }
-                if (detailParts.isNotEmpty()) {
-                    Text(
-                        text = detailParts.joinToString(" • "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                item.overview
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { overview ->
-                        Text(
-                            text = overview,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                val detailText = detailParts.takeIf { it.isNotEmpty() }?.joinToString(" • ") ?: " "
+                Text(
+                    text = detailText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    minLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val overview = item.overview?.takeIf { it.isNotBlank() } ?: " "
+                Text(
+                    text = overview,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    minLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
-    }
-    Card(
-        modifier = baseModifier,
-        onClick = onClick,
-        colors = cardColors,
-    ) {
-        content()
     }
 }
 
