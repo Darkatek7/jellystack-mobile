@@ -284,6 +284,97 @@ class SqlDelightJellyfinItemStore(
                 )
             }.executeAsList()
 
+    override suspend fun replaceNextUp(
+        serverId: String,
+        itemIds: List<String>,
+        updatedAt: Instant,
+    ) {
+        queries.deleteNextUpByServer(serverId)
+        itemIds.forEachIndexed { index, itemId ->
+            queries.insertNextUp(
+                server_id = serverId,
+                item_id = itemId,
+                sort_order = index.toLong(),
+                updated_at = updatedAt.toEpochMilliseconds(),
+            )
+        }
+    }
+
+    override suspend fun listNextUp(
+        serverId: String,
+        limit: Long,
+    ): List<JellyfinItemRecord> =
+        queries
+            .selectNextUp(serverId, limit) {
+                    id,
+                    server_id,
+                    library_id,
+                    name,
+                    sort_name,
+                    overview,
+                    type,
+                    media_type,
+                    taglines,
+                    parent_id,
+                    primary_image_tag,
+                    thumb_image_tag,
+                    backdrop_image_tag,
+                    series_id,
+                    series_primary_image_tag,
+                    series_thumb_image_tag,
+                    series_backdrop_image_tag,
+                    parent_logo_image_tag,
+                    run_time_ticks,
+                    position_ticks,
+                    played_percentage,
+                    production_year,
+                    premiere_date,
+                    community_rating,
+                    official_rating,
+                    index_number,
+                    parent_index_number,
+                    series_name,
+                    season_id,
+                    episode_title,
+                    last_played,
+                    updated_at,
+                ->
+                mapItemRecord(
+                    id = id,
+                    serverId = server_id,
+                    libraryId = library_id,
+                    name = name,
+                    sortName = sort_name,
+                    overview = overview,
+                    type = type,
+                    mediaType = media_type,
+                    taglines = taglines,
+                    parentId = parent_id,
+                    primaryImageTag = primary_image_tag,
+                    thumbImageTag = thumb_image_tag,
+                    backdropImageTag = backdrop_image_tag,
+                    seriesId = series_id,
+                    seriesPrimaryImageTag = series_primary_image_tag,
+                    seriesThumbImageTag = series_thumb_image_tag,
+                    seriesBackdropImageTag = series_backdrop_image_tag,
+                    parentLogoImageTag = parent_logo_image_tag,
+                    runTimeTicks = run_time_ticks,
+                    positionTicks = position_ticks,
+                    playedPercentage = played_percentage,
+                    productionYear = production_year,
+                    premiereDate = premiere_date,
+                    communityRating = community_rating,
+                    officialRating = official_rating,
+                    indexNumber = index_number,
+                    parentIndexNumber = parent_index_number,
+                    seriesName = series_name,
+                    seasonId = season_id,
+                    episodeTitle = episode_title,
+                    lastPlayed = last_played,
+                    updatedAt = updated_at,
+                )
+            }.executeAsList()
+
     override suspend fun clearContinueWatching(
         serverId: String,
         keepIds: Set<String>,

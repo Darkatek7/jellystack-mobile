@@ -33,6 +33,14 @@ CREATE TABLE jellyfin_items (
     updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE jellyfin_next_up (
+    server_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, item_id)
+);
+
 selectByLibrary:
 SELECT *
 FROM jellyfin_items
@@ -63,6 +71,14 @@ WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0
 ORDER BY COALESCE(last_played, '') DESC, updated_at DESC
 LIMIT ?;
 
+selectNextUp:
+SELECT jellyfin_items.*
+FROM jellyfin_next_up
+JOIN jellyfin_items ON jellyfin_items.id = jellyfin_next_up.item_id
+WHERE jellyfin_next_up.server_id = ?
+ORDER BY jellyfin_next_up.sort_order
+LIMIT ?;
+
 clearAllContinueWatching:
 UPDATE jellyfin_items
 SET position_ticks = NULL,
@@ -79,6 +95,19 @@ WHERE server_id = ?
   AND position_ticks IS NOT NULL
   AND position_ticks > 0
   AND id NOT IN ?;
+
+deleteNextUpByServer:
+DELETE FROM jellyfin_next_up
+WHERE server_id = ?;
+
+insertNextUp:
+INSERT OR REPLACE INTO jellyfin_next_up (
+    server_id,
+    item_id,
+    sort_order,
+    updated_at
+)
+VALUES (?, ?, ?, ?);
 
 selectEpisodesForSeries:
 SELECT *

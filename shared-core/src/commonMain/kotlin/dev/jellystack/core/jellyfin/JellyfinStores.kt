@@ -96,6 +96,17 @@ interface JellyfinItemStore {
         limit: Long,
     ): List<JellyfinItemRecord>
 
+    suspend fun replaceNextUp(
+        serverId: String,
+        itemIds: List<String>,
+        updatedAt: Instant,
+    )
+
+    suspend fun listNextUp(
+        serverId: String,
+        limit: Long,
+    ): List<JellyfinItemRecord>
+
     suspend fun clearContinueWatching(
         serverId: String,
         keepIds: Set<String>,

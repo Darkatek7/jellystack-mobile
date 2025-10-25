@@ -375,15 +375,19 @@ fun JellyfinBrowseScreen(
                 if (isTvLibrary) groupTvSeries(state.libraryItems) else emptyList()
             }
         val nextUpItems =
-            remember(state.continueWatching, state.libraryItems) {
-                val continueEpisodes = state.continueWatching.filter { it.type.equals("Episode", ignoreCase = true) }
-                val upcomingEpisodes =
-                    state.libraryItems
-                        .filter { it.type.equals("Episode", ignoreCase = true) }
-                        .filter { (it.playedPercentage ?: 0.0) < 90.0 }
-                (continueEpisodes + upcomingEpisodes)
-                    .distinctBy { it.id }
-                    .take(12)
+            remember(state.nextUp, state.continueWatching, state.libraryItems) {
+                if (state.nextUp.isNotEmpty()) {
+                    state.nextUp
+                } else {
+                    val continueEpisodes = state.continueWatching.filter { it.type.equals("Episode", ignoreCase = true) }
+                    val upcomingEpisodes =
+                        state.libraryItems
+                            .filter { it.type.equals("Episode", ignoreCase = true) }
+                            .filter { (it.playedPercentage ?: 0.0) < 90.0 }
+                    (continueEpisodes + upcomingEpisodes)
+                        .distinctBy { it.id }
+                        .take(12)
+                }
             }
         val recentShowGroups =
             remember(state.recentShows) {

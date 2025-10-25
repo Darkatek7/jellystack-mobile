@@ -4,6 +4,7 @@ import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.AUDIO
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.OTHER
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.SUBTITLE
 import dev.jellystack.core.jellyfin.JellyfinMediaStreamType.VIDEO
+import dev.jellystack.core.logging.JellystackLog
 import dev.jellystack.network.NetworkJson
 import dev.jellystack.network.jellyfin.JellyfinBrowseApi
 import dev.jellystack.network.jellyfin.JellyfinItemDetailDto
@@ -46,6 +47,11 @@ class JellyfinBrowseRepository(
     suspend fun cachedContinueWatching(limit: Int): List<JellyfinItem> {
         val environment = environmentProvider.current() ?: return emptyList()
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
+    }
+
+    suspend fun cachedNextUp(limit: Int): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        return itemStore.listNextUp(environment.serverKey, limit.toLong()).map { it.toDomain() }
     }
 
     suspend fun cachedRecentShows(
@@ -110,6 +116,103 @@ class JellyfinBrowseRepository(
             keepIds = records.map { it.id }.toSet(),
         )
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
+    }
+
+    suspend fun refreshNextUp(
+        limit: Int,
+        libraryId: String?,
+    ): List<JellyfinItem> {
+        val environment = environmentProvider.current() ?: return emptyList()
+        val api = apiFor(environment)
+        val now = clock.now()
+        val fallback =
+            itemStore
+                .listNextUp(environment.serverKey, limit.toLong())
+                .map { it.toDomain() }
+        JellystackLog.d("Fetching Jellyfin Next Up (server=${environment.serverKey}, library=$libraryId, limit=$limit)")
+        var usedLibraryFilter = libraryId != null
+        var response =
+            runCatching {
+                api.fetchNextUp(environment.userId, limit, parentId = libraryId)
+            }.getOrElse { primary ->
+                JellystackLog.e(
+                    "Next Up fetch failed for library=$libraryId on server=${environment.serverKey}: ${primary.message}",
+                    primary,
+                )
+                runCatching {
+                    JellystackLog.d("Retrying Jellyfin Next Up without library filter (server=${environment.serverKey})")
+                    api.fetchNextUp(environment.userId, limit, parentId = null)
+                }.getOrElse { fallbackError ->
+                    JellystackLog.e(
+                        "Fallback Next Up fetch without library filter also failed on server=${environment.serverKey}: ${fallbackError.message}",
+                        fallbackError,
+                    )
+                    return fallback
+                }.also {
+                    usedLibraryFilter = false
+                }
+            }
+        if (response.items.isEmpty() && usedLibraryFilter) {
+            JellystackLog.d(
+                "Next Up response empty for library=$libraryId on server=${environment.serverKey}; retrying without library filter",
+            )
+            response =
+                runCatching {
+                    api.fetchNextUp(environment.userId, limit, parentId = null)
+                }.getOrElse { fallbackError ->
+                    JellystackLog.e(
+                        "Fallback Next Up fetch without library filter also failed on server=${environment.serverKey}: ${fallbackError.message}",
+                        fallbackError,
+                    )
+                    return fallback
+                }
+            usedLibraryFilter = false
+        }
+        if (response.items.isEmpty()) {
+            JellystackLog.d(
+                "Next Up Items endpoint returned no results on server=${environment.serverKey}; trying Shows endpoint",
+            )
+            response =
+                runCatching {
+                    api.fetchShowsNextUp(environment.userId, limit, parentId = libraryId)
+                }.getOrElse { showsError ->
+                    JellystackLog.e(
+                        "Shows Next Up fetch failed on server=${environment.serverKey}: ${showsError.message}",
+                        showsError,
+                    )
+                    return fallback
+                }
+        }
+        if (response.items.isEmpty()) {
+            JellystackLog.d(
+                "Next Up still empty on server=${environment.serverKey}; keeping ${fallback.size} cached items",
+            )
+            return fallback
+        }
+        val records =
+            response.items.map { item ->
+                item.toRecord(
+                    environment,
+                    fallbackLibraryId = libraryId ?: item.parentId,
+                    updatedAt = now,
+                )
+            }
+        itemStore.upsert(records)
+        itemStore.replaceNextUp(environment.serverKey, records.map { it.id }, now)
+        val updated =
+            itemStore
+                .listNextUp(environment.serverKey, limit.toLong())
+                .map { it.toDomain() }
+        JellystackLog.d(
+            "Updated Jellyfin Next Up with ${updated.size} items on server=${environment.serverKey}: ${
+                updated.joinToString(
+                    limit = 3,
+                    truncated = "…",
+                    transform = JellyfinItem::id,
+                )
+            }",
+        )
+        return updated
     }
 
     suspend fun refreshRecentlyAddedShows(

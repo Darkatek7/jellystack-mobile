@@ -18,6 +18,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class JellyfinBrowseRepositoryTest {
+    private enum class NextUpResponseMode {
+        DEFAULT,
+        FORCE_SHOWS_ENDPOINT,
+    }
+
+    private var nextUpMode: NextUpResponseMode = NextUpResponseMode.DEFAULT
+
     private val environment =
         JellyfinEnvironment(
             serverKey = "srv-1",
@@ -38,6 +45,21 @@ class JellyfinBrowseRepositoryTest {
                 when (val path = request.url.encodedPath) {
                     "/Users/user-123/Views" -> LIBRARIES_JSON
                     "/Users/user-123/Items/Resume" -> RESUME_JSON
+                    "/Users/user-123/Items/NextUp" ->
+                        when (nextUpMode) {
+                            NextUpResponseMode.DEFAULT ->
+                                if (request.url.parameters["ParentId"].isNullOrBlank()) {
+                                    NEXT_UP_JSON
+                                } else {
+                                    EMPTY_NEXT_UP_JSON
+                                }
+                            NextUpResponseMode.FORCE_SHOWS_ENDPOINT -> EMPTY_NEXT_UP_JSON
+                        }
+                    "/Shows/NextUp" ->
+                        when (nextUpMode) {
+                            NextUpResponseMode.DEFAULT -> EMPTY_NEXT_UP_JSON
+                            NextUpResponseMode.FORCE_SHOWS_ENDPOINT -> NEXT_UP_JSON
+                        }
                     "/Users/user-123/Items/item-1" -> DETAIL_JSON
                     "/Users/user-123/Items/Latest" ->
                         when (request.url.parameters["IncludeItemTypes"]) {
@@ -167,6 +189,34 @@ class JellyfinBrowseRepositoryTest {
             assertNull(itemStore.get("stale-episode")?.positionTicks)
         }
 
+    @Test
+    fun refreshNextUpCachesAndReturnsItems() =
+        runTest {
+            nextUpMode = NextUpResponseMode.DEFAULT
+            repository.refreshLibraries()
+
+            val nextUp = repository.refreshNextUp(limit = 12, libraryId = "lib-2")
+
+            assertEquals(listOf("next-episode"), nextUp.map { it.id })
+            val stored = itemStore.listNextUp(environment.serverKey, limit = 10)
+            assertEquals(listOf("next-episode"), stored.map { it.id })
+            val cached = repository.cachedNextUp(limit = 12)
+            assertEquals(listOf("next-episode"), cached.map { it.id })
+        }
+
+    @Test
+    fun refreshNextUpFallsBackToShowsEndpoint() =
+        runTest {
+            nextUpMode = NextUpResponseMode.FORCE_SHOWS_ENDPOINT
+            repository.refreshLibraries()
+
+            val nextUp = repository.refreshNextUp(limit = 12, libraryId = "lib-2")
+
+            assertEquals(listOf("next-episode"), nextUp.map { it.id })
+            val stored = itemStore.listNextUp(environment.serverKey, limit = 10)
+            assertEquals(listOf("next-episode"), stored.map { it.id })
+        }
+
     private object FixedClock : Clock {
         private val instant = Instant.parse("2024-01-01T00:00:00Z")
 
@@ -189,6 +239,7 @@ class JellyfinBrowseRepositoryTest {
 
     private class InMemoryItemStore : JellyfinItemStore {
         private val records = mutableMapOf<String, MutableMap<String, JellyfinItemRecord>>()
+        private val nextUp = mutableMapOf<String, List<String>>()
 
         override suspend fun replaceForLibrary(
             serverId: String,
@@ -264,6 +315,23 @@ class JellyfinBrowseRepositoryTest {
             }
             records[serverId] = updated
         }
+
+        override suspend fun replaceNextUp(
+            serverId: String,
+            itemIds: List<String>,
+            updatedAt: Instant,
+        ) {
+            nextUp[serverId] = itemIds.toList()
+        }
+
+        override suspend fun listNextUp(
+            serverId: String,
+            limit: Long,
+        ): List<JellyfinItemRecord> =
+            nextUp[serverId]
+                ?.take(limit.toInt())
+                ?.mapNotNull { id -> records[serverId]?.get(id) }
+                ?: emptyList()
 
         override suspend fun listEpisodesForSeries(
             serverId: String,
@@ -354,6 +422,30 @@ class JellyfinBrowseRepositoryTest {
                 "ImageTags": {"Primary": "latest-show-tag"}
               }
             ]
+        """
+
+        private const val EMPTY_NEXT_UP_JSON = """
+            {
+              "Items": []
+            }
+        """
+
+        private const val NEXT_UP_JSON = """
+            {
+              "Items": [
+                {
+                  "Id": "next-episode",
+                  "Name": "Next Up Episode",
+                  "Type": "Episode",
+                  "SeriesId": "series-1",
+                  "ParentId": "series-1",
+                  "IndexNumber": 2,
+                  "ParentIndexNumber": 1,
+                  "RunTimeTicks": 24000000000,
+                  "ImageTags": {"Primary": "next-up-tag"}
+                }
+              ]
+            }
         """
 
         private const val RESUME_JSON = ITEMS_JSON

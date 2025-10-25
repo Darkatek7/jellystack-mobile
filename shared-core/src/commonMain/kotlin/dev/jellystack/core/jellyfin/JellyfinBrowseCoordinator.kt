@@ -1,5 +1,6 @@
 package dev.jellystack.core.jellyfin
 
+import dev.jellystack.core.logging.JellystackLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -16,6 +17,7 @@ data class JellyfinHomeState(
     val isPageLoading: Boolean = false,
     val libraries: List<JellyfinLibrary> = emptyList(),
     val continueWatching: List<JellyfinItem> = emptyList(),
+    val nextUp: List<JellyfinItem> = emptyList(),
     val recentShows: List<JellyfinItem> = emptyList(),
     val recentMovies: List<JellyfinItem> = emptyList(),
     val selectedLibraryId: String? = null,
@@ -73,8 +75,10 @@ class JellyfinBrowseCoordinator(
                         val selectedId = selectDefaultLibrary(libraries)
                         val imageBaseUrl = repository.currentServerBaseUrl()
                         val imageAccessToken = repository.currentAccessToken()
+                        val showsLibraryId = preferredLibraryId(libraries, "tvshows", "series") ?: selectedId
+                        val moviesLibraryId = preferredLibraryId(libraries, "movies") ?: selectedId
 
-                        val (continueWatching, firstPage) =
+                        val (continueWatching, nextUp, firstPage) =
                             coroutineScope {
                                 val continueWatchingDeferred =
                                     async {
@@ -83,6 +87,18 @@ class JellyfinBrowseCoordinator(
                                         } else {
                                             cachedState!!.continueWatching
                                         }
+                                    }
+                                val nextUpDeferred =
+                                    async {
+                                        val fallback =
+                                            cachedState?.nextUp
+                                                ?: repository.cachedNextUp(limit = HOME_SECTION_ITEM_LIMIT)
+                                        runCatching {
+                                            repository.refreshNextUp(
+                                                limit = HOME_SECTION_ITEM_LIMIT,
+                                                libraryId = showsLibraryId,
+                                            )
+                                        }.getOrElse { fallback }
                                     }
                                 val firstPageDeferred =
                                     selectedId?.let { id ->
@@ -94,11 +110,13 @@ class JellyfinBrowseCoordinator(
                                     }
 
                                 val continueWatchingResult = continueWatchingDeferred.await()
+                                val nextUpResult = nextUpDeferred.await()
                                 val firstPageResult = firstPageDeferred?.await() ?: emptyList()
-                                continueWatchingResult to firstPageResult
+                                Triple(continueWatchingResult, nextUpResult, firstPageResult)
                             }
-                        val showsLibraryId = preferredLibraryId(libraries, "tvshows", "series") ?: selectedId
-                        val moviesLibraryId = preferredLibraryId(libraries, "movies") ?: selectedId
+                        JellystackLog.d(
+                            "Home bootstrap loaded ${continueWatching.size} continueWatching items and ${nextUp.size} nextUp items",
+                        )
                         val recentShows =
                             showsLibraryId?.let { id ->
                                 if (forceRefresh || cachedState?.recentShows.isNullOrEmpty()) {
@@ -122,6 +140,7 @@ class JellyfinBrowseCoordinator(
                                 isPageLoading = false,
                                 libraries = libraries,
                                 continueWatching = continueWatching,
+                                nextUp = nextUp,
                                 recentShows = recentShows,
                                 recentMovies = recentMovies,
                                 selectedLibraryId = selectedId,
@@ -207,6 +226,22 @@ class JellyfinBrowseCoordinator(
                 val items = repository.loadLibraryPage(selectedId, page = page, pageSize = pageSize, refresh = refresh)
                 val showsLibraryId = preferredLibraryId(stateBefore.libraries, "tvshows", "series") ?: selectedId
                 val moviesLibraryId = preferredLibraryId(stateBefore.libraries, "movies") ?: selectedId
+                val refreshedNextUp =
+                    if (page == 0 && refresh) {
+                        runCatching {
+                            repository.refreshNextUp(
+                                limit = HOME_SECTION_ITEM_LIMIT,
+                                libraryId = showsLibraryId,
+                            )
+                        }.getOrElse {
+                            repository.cachedNextUp(limit = HOME_SECTION_ITEM_LIMIT)
+                        }
+                    } else {
+                        null
+                    }
+                refreshedNextUp?.let { items ->
+                    JellystackLog.d("Refreshed Next Up after library load with ${items.size} items (page=$page)")
+                }
                 val recentShows =
                     if (page == 0 && (refresh || stateBefore.recentShows.isEmpty())) {
                         showsLibraryId?.let { id ->
@@ -238,6 +273,7 @@ class JellyfinBrowseCoordinator(
                         endReached = items.size < pageSize,
                         imageBaseUrl = imageBaseUrl,
                         imageAccessToken = imageAccessToken,
+                        nextUp = refreshedNextUp ?: mutableState.value.nextUp,
                         recentShows = recentShows ?: mutableState.value.recentShows,
                         recentMovies = recentMovies ?: mutableState.value.recentMovies,
                     )
@@ -261,6 +297,7 @@ class JellyfinBrowseCoordinator(
         val imageBaseUrl = repository.currentServerBaseUrl()
         val imageAccessToken = repository.currentAccessToken()
         val continueWatching = repository.cachedContinueWatching(limit = HOME_SECTION_ITEM_LIMIT)
+        val nextUp = repository.cachedNextUp(limit = HOME_SECTION_ITEM_LIMIT)
         val firstPage =
             selectedId?.let { id ->
                 repository.cachedLibraryPage(id, page = 0, pageSize = pageSize)
@@ -272,6 +309,7 @@ class JellyfinBrowseCoordinator(
             isPageLoading = false,
             libraries = libraries,
             continueWatching = continueWatching,
+            nextUp = nextUp,
             recentShows = recentShows,
             recentMovies = recentMovies,
             selectedLibraryId = selectedId,

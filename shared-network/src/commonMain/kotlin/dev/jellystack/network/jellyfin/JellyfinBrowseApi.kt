@@ -125,6 +125,45 @@ class JellyfinBrowseApi(
                 parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
             }.body()
 
+    suspend fun fetchNextUp(
+        userId: String,
+        limit: Int,
+        parentId: String? = null,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Users/$userId/Items/NextUp")
+                parameter("Limit", limit)
+                parameter("StartIndex", 0)
+                parentId?.let { parameter("ParentId", it) }
+                parameter("IncludeItemTypes", "Episode,Series")
+                parameter("Fields", REQUIRED_FIELDS)
+                parameter("ImageTypeLimit", 1)
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
+                parameter("EnableUserData", true)
+            }.body()
+    
+    suspend fun fetchShowsNextUp(
+        userId: String,
+        limit: Int,
+        parentId: String? = null,
+    ): JellyfinItemsResponse =
+        client
+            .request {
+                method = HttpMethod.Get
+                configure("/Shows/NextUp")
+                parameter("UserId", userId)
+                parameter("Limit", limit)
+                parameter("StartIndex", 0)
+                parentId?.let { parameter("ParentId", it) }
+                parameter("IncludeItemTypes", "Episode,Series")
+                parameter("Fields", REQUIRED_FIELDS)
+                parameter("ImageTypeLimit", 1)
+                parameter("EnableImageTypes", "Primary,Backdrop,Thumb,Logo")
+                parameter("EnableUserData", true)
+            }.body()
+
     suspend fun fetchItemDetail(
         userId: String,
         itemId: String,

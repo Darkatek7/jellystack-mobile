@@ -11,6 +11,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,6 +36,7 @@ class JellyfinBrowseCoordinatorTest {
                 when {
                     path.endsWith("/Views") -> LIBRARIES_JSON
                     path.endsWith("/Items/Resume") -> RESUME_JSON
+                    path.endsWith("/Items/NextUp") -> NEXT_UP_JSON
                     path.endsWith("/Items/Latest") ->
                         when (request.url.parameters["includeItemTypes"]) {
                             "Series,Episode" -> LATEST_SHOWS_JSON
@@ -90,6 +92,7 @@ class JellyfinBrowseCoordinatorTest {
             assertEquals(2, state.libraryItems.size, "state=$state")
             assertFalse(state.endReached, "state=$state")
             assertEquals("resume-1", state.continueWatching.first().id, "state=$state")
+            assertEquals("next-1", state.nextUp.first().id, "state=$state")
         }
 
     @Test
@@ -132,6 +135,7 @@ class JellyfinBrowseCoordinatorTest {
 
     private class InMemoryItemStore : JellyfinItemStore {
         private val records = mutableMapOf<String, MutableMap<String, JellyfinItemRecord>>()
+        private val nextUp = mutableMapOf<String, List<String>>()
 
         override suspend fun replaceForLibrary(
             serverId: String,
@@ -212,6 +216,23 @@ class JellyfinBrowseCoordinatorTest {
             }
         }
 
+        override suspend fun replaceNextUp(
+            serverId: String,
+            itemIds: List<String>,
+            updatedAt: Instant,
+        ) {
+            nextUp[serverId] = itemIds.toList()
+        }
+
+        override suspend fun listNextUp(
+            serverId: String,
+            limit: Long,
+        ): List<JellyfinItemRecord> =
+            nextUp[serverId]
+                ?.take(limit.toInt())
+                ?.mapNotNull { id -> records[serverId]?.get(id) }
+                ?: emptyList()
+
         override suspend fun listEpisodesForSeries(
             serverId: String,
             seriesId: String,
@@ -266,6 +287,25 @@ class JellyfinBrowseCoordinatorTest {
                   "RunTimeTicks": 36000000000,
                   "UserData": {"PlaybackPositionTicks": 18000000000},
                   "ImageTags": {"Primary": "resume-tag"}
+                }
+              ]
+            }
+        """
+
+        private const val NEXT_UP_JSON = """
+            {
+              "Items": [
+                {
+                  "Id": "next-1",
+                  "Name": "Next Episode",
+                  "Type": "Episode",
+                  "SeriesId": "series-1",
+                  "ParentId": "series-1",
+                  "IndexNumber": 2,
+                  "ParentIndexNumber": 1,
+                  "RunTimeTicks": 30000000000,
+                  "ImageTags": {"Primary": "next-tag"},
+                  "UserData": {"PlaybackPositionTicks": 0}
                 }
               ]
             }
