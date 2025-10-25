@@ -63,6 +63,23 @@ WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0
 ORDER BY COALESCE(last_played, '') DESC, updated_at DESC
 LIMIT ?;
 
+clearAllContinueWatching:
+UPDATE jellyfin_items
+SET position_ticks = NULL,
+    played_percentage = NULL,
+    last_played = NULL
+WHERE server_id = ? AND position_ticks IS NOT NULL AND position_ticks > 0;
+
+clearContinueWatching:
+UPDATE jellyfin_items
+SET position_ticks = NULL,
+    played_percentage = NULL,
+    last_played = NULL
+WHERE server_id = ?
+  AND position_ticks IS NOT NULL
+  AND position_ticks > 0
+  AND id NOT IN ?;
+
 selectEpisodesForSeries:
 SELECT *
 FROM jellyfin_items

@@ -187,6 +187,31 @@ class JellyfinBrowseCoordinatorTest {
                 ?.take(limit.toInt())
                 ?: emptyList()
 
+        override suspend fun clearContinueWatching(
+            serverId: String,
+            keepIds: Set<String>,
+        ) {
+            val serverRecords = records[serverId] ?: return
+            if (keepIds.isEmpty()) {
+                serverRecords.keys.forEach { id ->
+                    val record = serverRecords[id] ?: return@forEach
+                    if ((record.positionTicks ?: 0L) > 0L) {
+                        serverRecords[id] =
+                            record.copy(positionTicks = null, playedPercentage = null, lastPlayed = null)
+                    }
+                }
+            } else {
+                serverRecords.keys.forEach { id ->
+                    if (id in keepIds) return@forEach
+                    val record = serverRecords[id] ?: return@forEach
+                    if ((record.positionTicks ?: 0L) > 0L) {
+                        serverRecords[id] =
+                            record.copy(positionTicks = null, playedPercentage = null, lastPlayed = null)
+                    }
+                }
+            }
+        }
+
         override suspend fun listEpisodesForSeries(
             serverId: String,
             seriesId: String,

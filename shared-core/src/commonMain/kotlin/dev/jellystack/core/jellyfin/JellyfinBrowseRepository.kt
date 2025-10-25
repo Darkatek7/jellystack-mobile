@@ -105,6 +105,10 @@ class JellyfinBrowseRepository(
         val response = api.fetchContinueWatching(environment.userId, limit)
         val records = response.items.map { it.toRecord(environment, fallbackLibraryId = it.parentId, updatedAt = now) }
         itemStore.upsert(records)
+        itemStore.clearContinueWatching(
+            serverId = environment.serverKey,
+            keepIds = records.map { it.id }.toSet(),
+        )
         return itemStore.listContinueWatching(environment.serverKey, limit.toLong()).map { it.toDomain() }
     }
 

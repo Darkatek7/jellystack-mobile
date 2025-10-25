@@ -15,6 +15,7 @@ import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class JellyfinBrowseRepositoryTest {
     private val environment =
@@ -118,6 +119,54 @@ class JellyfinBrowseRepositoryTest {
             assertNotNull(detailStore.get("item-1"))
         }
 
+    @Test
+    fun refreshContinueWatchingClearsMissingItems() =
+        runTest {
+            val staleRecord =
+                JellyfinItemRecord(
+                    id = "stale-episode",
+                    serverId = environment.serverKey,
+                    libraryId = "lib-2",
+                    name = "Stale Episode",
+                    sortName = null,
+                    overview = null,
+                    type = "Episode",
+                    mediaType = "Video",
+                    taglines = emptyList(),
+                    parentId = "series-1",
+                    primaryImageTag = null,
+                    thumbImageTag = null,
+                    backdropImageTag = null,
+                    seriesId = "series-1",
+                    seriesPrimaryImageTag = null,
+                    seriesThumbImageTag = null,
+                    seriesBackdropImageTag = null,
+                    parentLogoImageTag = null,
+                    runTimeTicks = 1L,
+                    positionTicks = 1L,
+                    playedPercentage = 5.0,
+                    productionYear = null,
+                    premiereDate = null,
+                    communityRating = null,
+                    officialRating = null,
+                    indexNumber = 1L,
+                    parentIndexNumber = 1L,
+                    seriesName = "Sample Series",
+                    seasonId = "season-1",
+                    episodeTitle = "Episode 1",
+                    lastPlayed = "2024-01-01T00:00:00Z",
+                    updatedAt = FixedClock.now(),
+                )
+            itemStore.upsert(listOf(staleRecord))
+
+            val refreshed = repository.refreshContinueWatching(limit = 12)
+
+            assertEquals(listOf("item-1"), refreshed.map { it.id })
+            val stored = itemStore.listContinueWatching(environment.serverKey, limit = 10)
+            assertEquals(listOf("item-1"), stored.map { it.id })
+            assertNull(itemStore.get("stale-episode")?.positionTicks)
+        }
+
     private object FixedClock : Clock {
         private val instant = Instant.parse("2024-01-01T00:00:00Z")
 
@@ -194,6 +243,27 @@ class JellyfinBrowseRepositoryTest {
                 ?.sortedByDescending { it.updatedAt }
                 ?.take(limit.toInt())
                 ?: emptyList()
+
+        override suspend fun clearContinueWatching(
+            serverId: String,
+            keepIds: Set<String>,
+        ) {
+            val serverRecords = records[serverId] ?: return
+            val preserved = keepIds.ifEmpty { emptySet() }
+            val updated = mutableMapOf<String, JellyfinItemRecord>()
+            serverRecords.forEach { (id, record) ->
+                val adjusted =
+                    if (preserved.isNotEmpty() && id in preserved) {
+                        record
+                    } else if ((record.positionTicks ?: 0L) > 0L && (preserved.isEmpty() || id !in preserved)) {
+                        record.copy(positionTicks = null, playedPercentage = null, lastPlayed = null)
+                    } else {
+                        record
+                    }
+                updated[id] = adjusted
+            }
+            records[serverId] = updated
+        }
 
         override suspend fun listEpisodesForSeries(
             serverId: String,

@@ -284,6 +284,17 @@ class SqlDelightJellyfinItemStore(
                 )
             }.executeAsList()
 
+    override suspend fun clearContinueWatching(
+        serverId: String,
+        keepIds: Set<String>,
+    ) {
+        if (keepIds.isEmpty()) {
+            queries.clearAllContinueWatching(serverId)
+        } else {
+            queries.clearContinueWatching(serverId, keepIds)
+        }
+    }
+
     override suspend fun listEpisodesForSeries(
         serverId: String,
         seriesId: String,

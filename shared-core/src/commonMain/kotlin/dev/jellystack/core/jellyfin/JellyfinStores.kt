@@ -96,6 +96,11 @@ interface JellyfinItemStore {
         limit: Long,
     ): List<JellyfinItemRecord>
 
+    suspend fun clearContinueWatching(
+        serverId: String,
+        keepIds: Set<String>,
+    )
+
     suspend fun listEpisodesForSeries(
         serverId: String,
         seriesId: String,

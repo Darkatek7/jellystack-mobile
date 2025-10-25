@@ -52,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -255,8 +256,8 @@ fun JellystackRoot(
             }
             PlaybackState.Stopped -> "Stopped"
         }
-    var currentScreen by remember { mutableStateOf(JellystackScreen.Home) }
-    var currentTab by remember { mutableStateOf(JellystackTab.Home) }
+    var currentScreen by rememberSaveable { mutableStateOf(JellystackScreen.Home) }
+    var currentTab by rememberSaveable { mutableStateOf(JellystackTab.Home) }
     var detailState by remember { mutableStateOf<JellyfinDetailUiState>(JellyfinDetailUiState.Hidden) }
     var detailEpisodeCache by remember { mutableStateOf<List<JellyfinItem>>(emptyList()) }
     var detailJob by remember { mutableStateOf<Job?>(null) }
