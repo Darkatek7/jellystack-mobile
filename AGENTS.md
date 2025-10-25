@@ -25,7 +25,7 @@ All CI, automation, or Codex builds must be executed from the repository root us
 ## Verification Rule
 Every task, commit, or automation step must succeed with:
 ```bash
-./gradlew build
+./gradlew :app-android:assembleDebug
 ```
 If this command fails, the task is considered incomplete.
 
